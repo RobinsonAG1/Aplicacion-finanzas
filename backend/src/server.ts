@@ -1,6 +1,7 @@
 import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
+import { prisma } from './db/prisma.js';
 
 const app = createApp();
 
@@ -10,13 +11,14 @@ const server = app.listen(env.PORT, () => {
 
 function shutdown(signal: string): void {
   logger.info(`Senal ${signal} recibida, cerrando servidor...`);
-  server.close((err) => {
-    if (err) {
-      logger.error({ err }, 'Error al cerrar el servidor');
-      process.exit(1);
-    }
-    logger.info('Servidor cerrado correctamente');
-    process.exit(0);
+  server.close(() => {
+    void prisma
+      .$disconnect()
+      .catch((err: unknown) => logger.error({ err }, 'Error al cerrar Prisma'))
+      .finally(() => {
+        logger.info('Servidor cerrado correctamente');
+        process.exit(0);
+      });
   });
 }
 
