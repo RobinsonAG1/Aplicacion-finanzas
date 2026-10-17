@@ -86,6 +86,18 @@ export const transactionRepository = {
     });
   },
 
+  findExpensesInRange(userId: string, from: Date, to: Date) {
+    return prisma.transaction.findMany({
+      where: {
+        userId,
+        type: 'EXPENSE',
+        categoryId: { not: null },
+        date: { gte: from, lte: to },
+      },
+      select: { categoryId: true, amount: true, date: true },
+    });
+  },
+
   findRecentByMerchant(userId: string, merchant: string, take: number) {
     return prisma.transaction.findMany({
       where: {

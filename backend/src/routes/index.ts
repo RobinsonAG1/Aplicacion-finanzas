@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { healthRouter } from './health.route.js';
 import { authRouter } from './auth.route.js';
 import { accountRouter } from './account.route.js';
+import { budgetRouter } from './budget.route.js';
 import { categoryRouter } from './category.route.js';
 import { transactionRouter } from './transaction.route.js';
 
@@ -12,3 +13,4 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/accounts', accountRouter);
 apiRouter.use('/categories', categoryRouter);
 apiRouter.use('/transactions', transactionRouter);
+apiRouter.use('/budgets', budgetRouter);
