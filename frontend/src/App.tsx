@@ -8,6 +8,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { PotsPage } from './pages/PotsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 
@@ -22,7 +23,7 @@ export default function App() {
           <Route index element={<DashboardPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="budgets" element={<BudgetsPage />} />
-          <Route path="pots" element={<PlaceholderPage title="Huchas de ahorro" />} />
+          <Route path="pots" element={<PotsPage />} />
           <Route path="bills" element={<PlaceholderPage title="Facturas recurrentes" />} />
           <Route path="analytics" element={<PlaceholderPage title="Analítica" />} />
           <Route path="accounts" element={<AccountsPage />} />

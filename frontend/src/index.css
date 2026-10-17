@@ -497,6 +497,47 @@ h1 {
   flex-wrap: wrap;
 }
 
+/* Huchas ------------------------------------------------------------------ */
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.switch {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.subheading {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+}
+
+.movement-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.movement {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.85rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.movement:last-child {
+  border-bottom: none;
+}
+
 select,
 input[type='color'] {
   background: var(--bg);
