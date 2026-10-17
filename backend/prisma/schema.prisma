@@ -1,0 +1,262 @@
+// Esquema de la aplicacion de finanzas personales (moneda: COP)
+// Prisma ORM 7 - generador prisma-client (ESM)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT
+  CASH
+  INVESTMENT
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum BudgetPeriod {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum PotTransactionType {
+  DEPOSIT
+  WITHDRAW
+}
+
+enum ReminderChannel {
+  EMAIL
+  LOG
+}
+
+enum ReminderStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ---------------------------------------------------------------------------
+// Usuarios y autenticacion
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens  RefreshToken[]
+  accounts       Account[]
+  categories     Category[]
+  transactions   Transaction[]
+  budgets        Budget[]
+  pots           Pot[]
+  recurringBills RecurringBill[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ip        String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Cuentas, categorias y transacciones
+// ---------------------------------------------------------------------------
+
+model Account {
+  id        String      @id @default(cuid())
+  userId    String
+  name      String
+  type      AccountType
+  balance   Decimal     @default(0) @db.Decimal(16, 2)
+  currency  String      @default("COP")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  userId    String
+  name      String
+  type      CategoryType
+  color     String       @default("#64748b")
+  isCustom  Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  budgets        Budget[]
+  recurringBills RecurringBill[]
+
+  @@unique([userId, name, type])
+  @@index([userId])
+  @@map("categories")
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  userId      String
+  accountId   String
+  categoryId  String?
+  amount      Decimal         @db.Decimal(16, 2)
+  type        TransactionType
+  description String?
+  merchant    String?
+  date        DateTime
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account        Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sourceForBills RecurringBill[] @relation("BillSourceTransaction")
+
+  @@index([userId, date])
+  @@index([categoryId])
+  @@index([merchant])
+  @@index([accountId, date])
+  @@map("transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Presupuestos
+// ---------------------------------------------------------------------------
+
+model Budget {
+  id          String       @id @default(cuid())
+  userId      String
+  categoryId  String
+  limitAmount Decimal      @db.Decimal(16, 2)
+  period      BudgetPeriod @default(MONTHLY)
+  startDate   DateTime
+  endDate     DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([categoryId])
+  @@map("budgets")
+}
+
+// ---------------------------------------------------------------------------
+// Huchas de ahorro (pots)
+// ---------------------------------------------------------------------------
+
+model Pot {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  targetAmount  Decimal  @db.Decimal(16, 2)
+  currentAmount Decimal  @default(0) @db.Decimal(16, 2)
+  color         String   @default("#22c55e")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions PotTransaction[]
+
+  @@index([userId])
+  @@map("pots")
+}
+
+model PotTransaction {
+  id        String             @id @default(cuid())
+  potId     String
+  amount    Decimal            @db.Decimal(16, 2)
+  type      PotTransactionType
+  date      DateTime           @default(now())
+  note      String?
+  createdAt DateTime           @default(now())
+
+  pot Pot @relation(fields: [potId], references: [id], onDelete: Cascade)
+
+  @@index([potId, date])
+  @@map("pot_transactions")
+}
+
+// ---------------------------------------------------------------------------
+// Facturas recurrentes y recordatorios
+// ---------------------------------------------------------------------------
+
+model RecurringBill {
+  id                  String   @id @default(cuid())
+  userId              String
+  name                String
+  amount              Decimal  @db.Decimal(16, 2)
+  categoryId          String?
+  dueDay              Int
+  isActive            Boolean  @default(true)
+  sourceTransactionId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category          Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sourceTransaction Transaction?   @relation("BillSourceTransaction", fields: [sourceTransactionId], references: [id], onDelete: SetNull)
+  reminders         BillReminder[]
+
+  @@index([userId])
+  @@index([categoryId])
+  @@map("recurring_bills")
+}
+
+model BillReminder {
+  id        String          @id @default(cuid())
+  billId    String
+  dueDate   DateTime
+  channel   ReminderChannel @default(LOG)
+  status    ReminderStatus  @default(PENDING)
+  sentAt    DateTime?
+  createdAt DateTime        @default(now())
+
+  bill RecurringBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+
+  @@index([billId, dueDate])
+  @@map("bill_reminders")
+}
