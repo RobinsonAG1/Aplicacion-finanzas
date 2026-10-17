@@ -5,7 +5,8 @@ completo y visualizacion de datos. Moneda: **Peso colombiano (COP)**, locale `es
 
 - **Backend**: Express 5 + TypeScript (ESM) · PostgreSQL · Prisma 7 (driver adapter `pg`)
   · SQL raw con window functions · JWT (access + refresh con rotacion) · Argon2id · Zod.
-- **Frontend**: React + Vite + TypeScript + Recharts _(pendiente)_.
+- **Frontend**: React 19 + Vite + TypeScript · React Router 7 · Recharts · TanStack-style
+  data hook propio · oxlint · Vitest + Testing Library. SPA servida por nginx con proxy `/api`.
 
 ## Estructura
 
@@ -14,8 +15,13 @@ completo y visualizacion de datos. Moneda: **Peso colombiano (COP)**, locale `es
 ├── backend/            API REST (proyecto independiente)
 │   ├── prisma/         schema.prisma, migraciones y seed
 │   ├── src/            codigo fuente (config, db, middlewares, rutas, servicios, repos)
-│   └── tests/          pruebas de integracion (vitest + supertest)
-├── docker-compose.yml  Postgres + backend (local / Coolify)
+│   ├── tests/          pruebas de integracion (vitest + supertest)
+│   └── Dockerfile      imagen del API
+├── frontend/           SPA React (proyecto independiente)
+│   ├── src/            api, hooks, lib, features, pages y estilos
+│   ├── Dockerfile      build Vite + nginx
+│   └── nginx.conf      SPA fallback + proxy /api -> backend
+├── docker-compose.yml  Postgres + backend + web (local / Coolify)
 └── .env.example        variables para docker compose
 ```
 
@@ -35,7 +41,8 @@ docker compose up --build
 ```
 
 El backend aplica las migraciones automaticamente al iniciar (`prisma migrate deploy`).
-Queda disponible en `http://localhost:4000/api`.
+- Frontend (nginx): `http://localhost:8080`
+- API: `http://localhost:4000/api`
 
 ### Opcion B: Local (Postgres nativo)
 
@@ -47,6 +54,15 @@ npm run prisma:generate
 npm run prisma:migrate        # crea/aplica migraciones
 npm run seed                  # datos demo (usuario demo@finanzas.test / Demo1234!)
 npm run dev                   # http://localhost:4000
+```
+
+En otra terminal, el frontend:
+
+```bash
+cd frontend
+cp .env.example .env          # VITE_API_URL apuntando al backend
+npm install
+npm run dev                   # http://localhost:5173
 ```
 
 ## Variables de entorno (backend)
@@ -74,6 +90,21 @@ npm run dev                   # http://localhost:4000
 | `npm run prisma:studio` | Explorador de base de datos |
 | `npm run seed` | Datos demo deterministicos |
 
+## Variables de entorno (frontend)
+
+| Variable | Descripcion |
+|---|---|
+| `VITE_API_URL` | URL base del API (def. `http://localhost:4000/api`; en Docker se compila como `/api`) |
+
+## Comandos (frontend)
+
+| Comando | Descripcion |
+|---|---|
+| `npm run dev` | Servidor de desarrollo Vite |
+| `npm run build` / `npm run preview` | Compilar / previsualizar `dist` |
+| `npm run typecheck` / `npm run lint` | Tipos / lint (oxlint) |
+| `npm run test` / `npm run test:watch` | Pruebas (Vitest + Testing Library) |
+
 ## API
 
 Todas las rutas viven bajo `/api`. Salvo `auth` y `health`, requieren
@@ -99,7 +130,10 @@ La lista de transacciones soporta paginacion, busqueda, orden y filtros:
 1. Crear el recurso apuntando a este repositorio con el `docker-compose.yml`.
 2. Definir las variables de `.env.example` en el panel (secretos JWT, password de Postgres).
 3. El contenedor del backend corre `prisma migrate deploy` antes de arrancar.
-4. Configurar el dominio del backend y apuntar `CORS_ORIGIN` al dominio del frontend.
+4. El servicio `web` compila la SPA y la sirve con nginx, proxyeando `/api` al backend;
+   exponer su puerto (`WEB_PORT`, def. 8080) en el dominio publico.
+5. Configurar dominios: si el frontend accede al API por el mismo origen (proxy nginx) no
+   se necesita CORS; si se sirven en dominios distintos, apuntar `CORS_ORIGIN` al del frontend.
 
 ## Roadmap
 
@@ -108,5 +142,5 @@ La lista de transacciones soporta paginacion, busqueda, orden y filtros:
 - [x] Cuentas, categorias y transacciones (CRUD, filtros, CSV)
 - [x] Presupuestos, huchas, facturas y recordatorios (stub)
 - [x] Analitica con window functions
-- [ ] Frontend React + Recharts
+- [x] Frontend React + Recharts (dashboard, cuentas, categorias, transacciones, presupuestos, huchas, facturas, analitica)
 - [ ] CI y despliegue continuo
