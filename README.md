@@ -22,6 +22,7 @@ completo y visualizacion de datos. Moneda: **Peso colombiano (COP)**, locale `es
 │   ├── Dockerfile      build Vite + nginx
 │   └── nginx.conf      SPA fallback + proxy /api -> backend
 ├── docker-compose.yml  Postgres + backend + web (local / Coolify)
+├── .github/workflows/  CI (GitHub Actions)
 └── .env.example        variables para docker compose
 ```
 
@@ -125,6 +126,14 @@ Todas las rutas viven bajo `/api`. Salvo `auth` y `health`, requieren
 La lista de transacciones soporta paginacion, busqueda, orden y filtros:
 `?page=1&limit=10&search=&sort=date|amount|createdAt&order=asc|desc&categoryId=&accountId=&type=&from=&to=`.
 
+## Integracion continua
+
+`.github/workflows/ci.yml` corre en cada push/PR a `main` con dos jobs:
+
+- **Backend**: PostgreSQL 16 como servicio, `prisma generate`, `typecheck`, `lint`, `test`
+  (crea `.env.test` y aplica `prisma migrate deploy`) y `build`.
+- **Frontend**: `typecheck`, `lint`, `test` y `build`.
+
 ## Deploy en Coolify
 
 1. Crear el recurso apuntando a este repositorio con el `docker-compose.yml`.
@@ -143,4 +152,5 @@ La lista de transacciones soporta paginacion, busqueda, orden y filtros:
 - [x] Presupuestos, huchas, facturas y recordatorios (stub)
 - [x] Analitica con window functions
 - [x] Frontend React + Recharts (dashboard, cuentas, categorias, transacciones, presupuestos, huchas, facturas, analitica)
-- [ ] CI y despliegue continuo
+- [x] Integracion continua (GitHub Actions)
+- [ ] Despliegue continuo

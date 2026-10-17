@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend · lint · types · tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://finanzas:finanzas@localhost:5432/finanzas_test?schema=public
+      JWT_ACCESS_SECRET: ci-access-secret-de-al-menos-32-caracteres-para-tests
+      JWT_REFRESH_SECRET: ci-refresh-secret-de-al-menos-32-caracteres-para-tests
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: finanzas
+          POSTGRES_PASSWORD: finanzas
+          POSTGRES_DB: finanzas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U finanzas -d finanzas_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Crear .env.test para las pruebas
+        run: |
+          cat > .env.test <<EOF
+          NODE_ENV=test
+          DATABASE_URL=${DATABASE_URL}
+          CORS_ORIGIN=http://localhost:5173
+          LOG_LEVEL=silent
+          JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+          JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+          JWT_ACCESS_TTL=900
+          JWT_REFRESH_TTL=604800
+          EOF
+
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm run test
+
+      - run: npm run build
+
+  frontend:
+    name: Frontend · lint · types · tests · build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm run test
+
+      - run: npm run build
