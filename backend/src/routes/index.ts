@@ -4,6 +4,7 @@ import { authRouter } from './auth.route.js';
 import { accountRouter } from './account.route.js';
 import { budgetRouter } from './budget.route.js';
 import { categoryRouter } from './category.route.js';
+import { potRouter } from './pot.route.js';
 import { transactionRouter } from './transaction.route.js';
 
 export const apiRouter = Router();
@@ -14,3 +15,4 @@ apiRouter.use('/accounts', accountRouter);
 apiRouter.use('/categories', categoryRouter);
 apiRouter.use('/transactions', transactionRouter);
 apiRouter.use('/budgets', budgetRouter);
+apiRouter.use('/pots', potRouter);
