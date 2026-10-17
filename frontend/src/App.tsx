@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AccountsPage } from './pages/AccountsPage'
+import { BudgetsPage } from './pages/BudgetsPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
@@ -20,7 +21,7 @@ export default function App() {
         <Route element={<Layout />}>
           <Route index element={<DashboardPage />} />
           <Route path="transactions" element={<TransactionsPage />} />
-          <Route path="budgets" element={<PlaceholderPage title="Presupuestos" />} />
+          <Route path="budgets" element={<BudgetsPage />} />
           <Route path="pots" element={<PlaceholderPage title="Huchas de ahorro" />} />
           <Route path="bills" element={<PlaceholderPage title="Facturas recurrentes" />} />
           <Route path="analytics" element={<PlaceholderPage title="Analítica" />} />

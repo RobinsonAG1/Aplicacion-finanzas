@@ -427,6 +427,76 @@ h1 {
   filter: brightness(1.15);
 }
 
+/* Presupuestos ------------------------------------------------------------ */
+.inline-field {
+  min-width: 150px;
+}
+
+.budget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.budget-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem;
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.budget-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.budget-cat {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.budget-amounts {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.progress-fill.warn {
+  background: #f59e0b;
+}
+
+.progress-fill.danger {
+  background: var(--danger);
+}
+
+.budget-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 select,
 input[type='color'] {
   background: var(--bg);
