@@ -538,6 +538,24 @@ h1 {
   border-bottom: none;
 }
 
+/* Facturas ---------------------------------------------------------------- */
+.badge-danger {
+  border-color: var(--danger);
+  color: #fecaca;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.checkbox-field input {
+  width: auto;
+}
+
 select,
 input[type='color'] {
   background: var(--bg);
