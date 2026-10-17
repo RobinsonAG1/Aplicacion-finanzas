@@ -19,3 +19,11 @@ export function startOfMonthInput(date = new Date()): string {
 export function endOfMonthInput(date = new Date()): string {
   return toDateInputValue(new Date(date.getFullYear(), date.getMonth() + 1, 0))
 }
+
+export function formatMonthLabel(value: string): string {
+  const [year, month] = value.split('-').map(Number)
+  if (!year || !month) return value
+  return new Intl.DateTimeFormat('es-CO', { month: 'short', year: 'numeric' }).format(
+    new Date(year, month - 1, 1),
+  )
+}

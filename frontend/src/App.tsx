@@ -2,13 +2,13 @@ import { Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { AccountsPage } from './pages/AccountsPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 import { BillsPage } from './pages/BillsPage'
 import { BudgetsPage } from './pages/BudgetsPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
 import { PotsPage } from './pages/PotsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { TransactionsPage } from './pages/TransactionsPage'
@@ -26,7 +26,7 @@ export default function App() {
           <Route path="budgets" element={<BudgetsPage />} />
           <Route path="pots" element={<PotsPage />} />
           <Route path="bills" element={<BillsPage />} />
-          <Route path="analytics" element={<PlaceholderPage title="Analítica" />} />
+          <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="categories" element={<CategoriesPage />} />
           <Route path="*" element={<NotFoundPage />} />

@@ -556,6 +556,29 @@ h1 {
   width: auto;
 }
 
+/* Analítica --------------------------------------------------------------- */
+.charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+@media (max-width: 900px) {
+  .charts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-wide {
+  grid-column: 1 / -1;
+}
+
+.chart-title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
 select,
 input[type='color'] {
   background: var(--bg);
