@@ -71,31 +71,48 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message, code, details)
 }
 
+async function authFetch(path: string, init: RequestInit, auth: boolean): Promise<Response> {
+  const withAuth = (): RequestInit => {
+    if (!auth) return init
+    const headers = new Headers(init.headers)
+    const token = tokenStore.getAccess()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+    return { ...init, headers }
+  }
+
+  let response = await fetch(`${env.apiUrl}${path}`, withAuth())
+  if (response.status === 401 && auth && (await refreshTokens())) {
+    response = await fetch(`${env.apiUrl}${path}`, withAuth())
+  }
+  return response
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, auth = true, signal } = options
 
-  const send = (): Promise<Response> => {
-    const headers: Record<string, string> = {}
-    if (body !== undefined) headers['Content-Type'] = 'application/json'
-    if (auth) {
-      const token = tokenStore.getAccess()
-      if (token) headers.Authorization = `Bearer ${token}`
-    }
-    return fetch(`${env.apiUrl}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal,
-    })
+  const init: RequestInit = { method, signal }
+  if (body !== undefined) {
+    init.headers = { 'Content-Type': 'application/json' }
+    init.body = JSON.stringify(body)
   }
 
-  let response = await send()
-  if (response.status === 401 && auth) {
-    const refreshed = await refreshTokens()
-    if (refreshed) response = await send()
-  }
-
+  const response = await authFetch(path, init, auth)
   if (!response.ok) throw await toApiError(response)
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const response = await authFetch(path, { method: 'POST', body: formData }, true)
+  if (!response.ok) throw await toApiError(response)
+  return (await response.json()) as T
+}
+
+export async function apiDownload(path: string): Promise<{ blob: Blob; filename: string }> {
+  const response = await authFetch(path, { method: 'GET' }, true)
+  if (!response.ok) throw await toApiError(response)
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const match = /filename="?([^";]+)"?/.exec(disposition)
+  return { blob, filename: match?.[1] ?? 'descarga.csv' }
 }

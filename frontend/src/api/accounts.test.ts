@@ -48,7 +48,7 @@ describe('accountsApi', () => {
     const [url, init] = fn.mock.calls[0]
     expect(url).toBe('http://localhost:4000/api/accounts')
     expect(init.method).toBe('POST')
-    expect(init.headers.Authorization).toBe('Bearer tok-123')
+    expect(new Headers(init.headers as HeadersInit).get('Authorization')).toBe('Bearer tok-123')
     expect(JSON.parse(init.body as string)).toEqual({
       name: 'Efectivo',
       type: 'CASH',

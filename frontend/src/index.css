@@ -323,6 +323,110 @@ h1 {
   font-size: 0.8rem;
 }
 
+/* Transacciones ----------------------------------------------------------- */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.filter-search {
+  flex: 1 1 240px;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.category-cell {
+  display: inline-flex;
+  align-items: center;
+}
+
+.category-cell select {
+  border: none;
+  background: transparent;
+  padding: 0.2rem 0.1rem;
+  font-size: 0.85rem;
+}
+
+.amount-income {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.amount-expense {
+  color: #f87171;
+  font-weight: 600;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.notice {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid var(--primary);
+  color: #bbf7d0;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+}
+
+.file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-button input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.chip:hover {
+  filter: brightness(1.15);
+}
+
 select,
 input[type='color'] {
   background: var(--bg);

@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { TransactionsPage } from './pages/TransactionsPage'
 
 export default function App() {
   return (
@@ -18,7 +19,7 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>
           <Route index element={<DashboardPage />} />
-          <Route path="transactions" element={<PlaceholderPage title="Transacciones" />} />
+          <Route path="transactions" element={<TransactionsPage />} />
           <Route path="budgets" element={<PlaceholderPage title="Presupuestos" />} />
           <Route path="pots" element={<PlaceholderPage title="Huchas de ahorro" />} />
           <Route path="bills" element={<PlaceholderPage title="Facturas recurrentes" />} />
