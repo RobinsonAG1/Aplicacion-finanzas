@@ -1,17 +1,33 @@
 import { Route, Routes } from 'react-router-dom'
+import { lazy } from 'react'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
-import { AccountsPage } from './pages/AccountsPage'
-import { AnalyticsPage } from './pages/AnalyticsPage'
-import { BillsPage } from './pages/BillsPage'
-import { BudgetsPage } from './pages/BudgetsPage'
-import { CategoriesPage } from './pages/CategoriesPage'
-import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
-import { PotsPage } from './pages/PotsPage'
 import { RegisterPage } from './pages/RegisterPage'
-import { TransactionsPage } from './pages/TransactionsPage'
+
+const AccountsPage = lazy(() =>
+  import('./pages/AccountsPage').then((module) => ({ default: module.AccountsPage })),
+)
+const AnalyticsPage = lazy(() =>
+  import('./pages/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })),
+)
+const BillsPage = lazy(() =>
+  import('./pages/BillsPage').then((module) => ({ default: module.BillsPage })),
+)
+const BudgetsPage = lazy(() =>
+  import('./pages/BudgetsPage').then((module) => ({ default: module.BudgetsPage })),
+)
+const CategoriesPage = lazy(() =>
+  import('./pages/CategoriesPage').then((module) => ({ default: module.CategoriesPage })),
+)
+const DashboardPage = lazy(() =>
+  import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
+)
+const PotsPage = lazy(() => import('./pages/PotsPage').then((module) => ({ default: module.PotsPage })))
+const TransactionsPage = lazy(() =>
+  import('./pages/TransactionsPage').then((module) => ({ default: module.TransactionsPage })),
+)
 
 export default function App() {
   return (
