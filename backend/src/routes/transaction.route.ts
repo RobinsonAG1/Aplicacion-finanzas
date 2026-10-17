@@ -1,7 +1,8 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
 import { transactionController } from '../controllers/transaction.controller.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import { validate } from '../middlewares/validate.js';
+import { uploadCsv } from '../middlewares/upload.middleware.js';
 import {
   createTransactionBody,
   setCategoryBody,
@@ -16,6 +17,13 @@ transactionRouter.use(authenticate);
 
 transactionRouter.get('/', asyncHandler(transactionController.list));
 transactionRouter.get('/suggestions', asyncHandler(transactionController.suggestions));
+transactionRouter.get('/export.csv', asyncHandler(transactionController.exportCsv));
+transactionRouter.post(
+  '/import',
+  express.text({ type: ['text/csv', 'text/plain'], limit: '5mb' }),
+  uploadCsv,
+  asyncHandler(transactionController.importCsv),
+);
 transactionRouter.post(
   '/',
   validate({ body: createTransactionBody }),

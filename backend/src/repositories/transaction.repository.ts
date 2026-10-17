@@ -1,11 +1,21 @@
 import { prisma } from '../db/prisma.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import type { TransactionType } from '../generated/prisma/enums.js';
 import type { ListTransactionsQuery } from '../schemas/transaction.schema.js';
 
 const categorySelect = { id: true, name: true, color: true, type: true } as const;
 const accountSelect = { id: true, name: true, type: true, currency: true } as const;
 
-function buildWhere(userId: string, query: ListTransactionsQuery): Prisma.TransactionWhereInput {
+export interface TransactionFilters {
+  search?: string;
+  categoryId?: string;
+  accountId?: string;
+  type?: TransactionType;
+  from?: Date;
+  to?: Date;
+}
+
+function buildWhere(userId: string, query: TransactionFilters): Prisma.TransactionWhereInput {
   const where: Prisma.TransactionWhereInput = { userId };
   if (query.search) {
     where.OR = [
@@ -52,6 +62,21 @@ export const transactionRepository = {
 
   findOwned(id: string, userId: string) {
     return prisma.transaction.findFirst({ where: { id, userId } });
+  },
+
+  findForExport(userId: string, filters: TransactionFilters) {
+    return prisma.transaction.findMany({
+      where: buildWhere(userId, filters),
+      orderBy: [{ date: 'desc' }, { id: 'desc' }],
+      include: { category: { select: categorySelect }, account: { select: accountSelect } },
+    });
+  },
+
+  findExistingKeys(userId: string, accountIds: string[]) {
+    return prisma.transaction.findMany({
+      where: { userId, accountId: { in: accountIds } },
+      select: { accountId: true, date: true, amount: true, type: true, merchant: true },
+    });
   },
 
   findById(id: string) {

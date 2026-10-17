@@ -48,6 +48,16 @@ export const suggestionsQuery = z.object({
   merchant: z.string().trim().min(1).max(120),
 });
 
+export const exportTransactionsQuery = z.object({
+  search: z.string().trim().min(1).max(100).optional(),
+  categoryId: z.string().min(1).optional(),
+  accountId: z.string().min(1).optional(),
+  type: transactionTypeSchema.optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
 export type CreateTransactionInput = z.infer<typeof createTransactionBody>;
 export type UpdateTransactionInput = z.infer<typeof updateTransactionBody>;
 export type ListTransactionsQuery = z.infer<typeof listTransactionsQuery>;
+export type ExportTransactionsQuery = z.infer<typeof exportTransactionsQuery>;
