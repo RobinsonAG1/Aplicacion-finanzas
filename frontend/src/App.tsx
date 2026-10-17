@@ -1,6 +1,8 @@
 import { Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { AccountsPage } from './pages/AccountsPage'
+import { CategoriesPage } from './pages/CategoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -21,8 +23,8 @@ export default function App() {
           <Route path="pots" element={<PlaceholderPage title="Huchas de ahorro" />} />
           <Route path="bills" element={<PlaceholderPage title="Facturas recurrentes" />} />
           <Route path="analytics" element={<PlaceholderPage title="Analítica" />} />
-          <Route path="accounts" element={<PlaceholderPage title="Cuentas" />} />
-          <Route path="categories" element={<PlaceholderPage title="Categorías" />} />
+          <Route path="accounts" element={<AccountsPage />} />
+          <Route path="categories" element={<CategoriesPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
