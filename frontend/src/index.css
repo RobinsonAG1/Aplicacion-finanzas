@@ -413,6 +413,10 @@ h3 {
   overflow-x: auto;
 }
 
+.panel-standalone {
+  margin-top: 1.25rem;
+}
+
 .form-panel {
   display: flex;
   flex-direction: column;

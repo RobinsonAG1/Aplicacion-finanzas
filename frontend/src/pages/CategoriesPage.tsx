@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import type { FormEvent } from 'react'
 import { categoriesApi } from '../api/categories'
 import type { Category, CategoryType } from '../api/types'
+import { Drawer } from '../components/Drawer'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { CATEGORY_TYPE_LABELS, CATEGORY_TYPES } from '../lib/labels'
 
@@ -20,12 +22,23 @@ export function CategoriesPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const editing = Boolean(form.id)
 
   function resetForm(): void {
     setForm(EMPTY_FORM)
     setFormError(null)
+  }
+
+  function openCreate(): void {
+    resetForm()
+    setDrawerOpen(true)
+  }
+
+  function closeDrawer(): void {
+    setDrawerOpen(false)
+    resetForm()
   }
 
   function startEdit(category: Category): void {
@@ -36,6 +49,7 @@ export function CategoriesPage() {
       color: category.color,
     })
     setFormError(null)
+    setDrawerOpen(true)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -48,7 +62,7 @@ export function CategoriesPage() {
       } else {
         await categoriesApi.create({ name: form.name, type: form.type, color: form.color })
       }
-      resetForm()
+      closeDrawer()
       await reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar la categoría')
@@ -73,57 +87,66 @@ export function CategoriesPage() {
 
   return (
     <section className="page">
-      <h1>Categorías</h1>
-      <p className="muted">Clasifica tus ingresos y gastos con colores.</p>
-
-      <div className="split">
-        <div className="panel">
-          {loading && <p className="muted">Cargando…</p>}
-          {error && <p className="alert">{error}</p>}
-          {!loading && !error && categories && categories.length === 0 && (
-            <p className="muted">Aún no tienes categorías.</p>
-          )}
-          {categories && categories.length > 0 && (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Categoría</th>
-                  <th>Tipo</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((category) => (
-                  <tr key={category.id}>
-                    <td>
-                      <span className="color-dot" style={{ backgroundColor: category.color }} />
-                      {category.name}
-                      {category.isCustom && <span className="badge">Propia</span>}
-                    </td>
-                    <td>{CATEGORY_TYPE_LABELS[category.type]}</td>
-                    <td className="actions">
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => startEdit(category)}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        onClick={() => void handleDelete(category)}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      <div className="page-head">
+        <div>
+          <h1>Categorías</h1>
+          <p className="muted">Clasifica tus ingresos y gastos con colores.</p>
         </div>
+        <button type="button" className="btn btn-primary" onClick={openCreate}>
+          Nueva categoría
+        </button>
+      </div>
 
+      <div className="panel panel-standalone">
+        {loading && <p className="muted">Cargando…</p>}
+        {error && <p className="alert">{error}</p>}
+        {!loading && !error && categories && categories.length === 0 && (
+          <p className="muted">Aún no tienes categorías.</p>
+        )}
+        {categories && categories.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th>Tipo</th>
+                <th className="cell-actions">
+                  <span className="sr-only">Acciones</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map((category) => (
+                <tr key={category.id}>
+                  <td>
+                    <span className="color-dot" style={{ backgroundColor: category.color }} />
+                    {category.name}
+                    {category.isCustom && <span className="badge">Propia</span>}
+                  </td>
+                  <td>{CATEGORY_TYPE_LABELS[category.type]}</td>
+                  <td className="cell-actions">
+                    <RowActionsMenu
+                      actions={[
+                        { label: 'Editar', onSelect: () => startEdit(category) },
+                        {
+                          label: 'Eliminar',
+                          onSelect: () => void handleDelete(category),
+                          danger: true,
+                        },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        label={editing ? 'Editar categoría' : 'Nueva categoría'}
+      >
         <form className="panel form-panel" onSubmit={handleSubmit}>
           <h2>{editing ? 'Editar categoría' : 'Nueva categoría'}</h2>
           {formError && <p className="alert">{formError}</p>}
@@ -166,14 +189,12 @@ export function CategoriesPage() {
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear categoría'}
             </button>
-            {editing && (
-              <button type="button" className="btn" onClick={resetForm}>
-                Cancelar
-              </button>
-            )}
+            <button type="button" className="btn" onClick={closeDrawer}>
+              Cancelar
+            </button>
           </div>
         </form>
-      </div>
+      </Drawer>
     </section>
   )
 }

@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import type { FormEvent } from 'react'
 import { accountsApi } from '../api/accounts'
 import type { Account, AccountType } from '../api/types'
+import { Drawer } from '../components/Drawer'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatCOP } from '../lib/formatCOP'
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES } from '../lib/labels'
@@ -21,12 +23,23 @@ export function AccountsPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const editing = Boolean(form.id)
 
   function resetForm(): void {
     setForm(EMPTY_FORM)
     setFormError(null)
+  }
+
+  function openCreate(): void {
+    resetForm()
+    setDrawerOpen(true)
+  }
+
+  function closeDrawer(): void {
+    setDrawerOpen(false)
+    resetForm()
   }
 
   function startEdit(account: Account): void {
@@ -37,6 +50,7 @@ export function AccountsPage() {
       balance: String(Number(account.balance)),
     })
     setFormError(null)
+    setDrawerOpen(true)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -54,7 +68,7 @@ export function AccountsPage() {
       } else {
         await accountsApi.create(payload)
       }
-      resetForm()
+      closeDrawer()
       await reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar la cuenta')
@@ -79,51 +93,64 @@ export function AccountsPage() {
 
   return (
     <section className="page">
-      <h1>Cuentas</h1>
-      <p className="muted">Administra tus cuentas y su saldo en pesos colombianos.</p>
-
-      <div className="split">
-        <div className="panel">
-          {loading && <p className="muted">Cargando…</p>}
-          {error && <p className="alert">{error}</p>}
-          {!loading && !error && accounts && accounts.length === 0 && (
-            <p className="muted">Aún no tienes cuentas. Crea la primera.</p>
-          )}
-          {accounts && accounts.length > 0 && (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>Tipo</th>
-                  <th className="right">Saldo</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {accounts.map((account) => (
-                  <tr key={account.id}>
-                    <td>{account.name}</td>
-                    <td>{ACCOUNT_TYPE_LABELS[account.type]}</td>
-                    <td className="right">{formatCOP(account.balance)}</td>
-                    <td className="actions">
-                      <button type="button" className="btn btn-sm" onClick={() => startEdit(account)}>
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        onClick={() => void handleDelete(account)}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+      <div className="page-head">
+        <div>
+          <h1>Cuentas</h1>
+          <p className="muted">Administra tus cuentas y su saldo en pesos colombianos.</p>
         </div>
+        <button type="button" className="btn btn-primary" onClick={openCreate}>
+          Nueva cuenta
+        </button>
+      </div>
 
+      <div className="panel panel-standalone">
+        {loading && <p className="muted">Cargando…</p>}
+        {error && <p className="alert">{error}</p>}
+        {!loading && !error && accounts && accounts.length === 0 && (
+          <p className="muted">Aún no tienes cuentas. Crea la primera.</p>
+        )}
+        {accounts && accounts.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Tipo</th>
+                <th className="right">Saldo</th>
+                <th className="cell-actions">
+                  <span className="sr-only">Acciones</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {accounts.map((account) => (
+                <tr key={account.id}>
+                  <td>{account.name}</td>
+                  <td>{ACCOUNT_TYPE_LABELS[account.type]}</td>
+                  <td className="right">{formatCOP(account.balance)}</td>
+                  <td className="cell-actions">
+                    <RowActionsMenu
+                      actions={[
+                        { label: 'Editar', onSelect: () => startEdit(account) },
+                        {
+                          label: 'Eliminar',
+                          onSelect: () => void handleDelete(account),
+                          danger: true,
+                        },
+                      ]}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        label={editing ? 'Editar cuenta' : 'Nueva cuenta'}
+      >
         <form className="panel form-panel" onSubmit={handleSubmit}>
           <h2>{editing ? 'Editar cuenta' : 'Nueva cuenta'}</h2>
           {formError && <p className="alert">{formError}</p>}
@@ -165,14 +192,12 @@ export function AccountsPage() {
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear cuenta'}
             </button>
-            {editing && (
-              <button type="button" className="btn" onClick={resetForm}>
-                Cancelar
-              </button>
-            )}
+            <button type="button" className="btn" onClick={closeDrawer}>
+              Cancelar
+            </button>
           </div>
         </form>
-      </div>
+      </Drawer>
     </section>
   )
 }
