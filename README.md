@@ -37,9 +37,13 @@ completo y visualizacion de datos. Moneda: **Peso colombiano (COP)**, locale `es
 ### Opcion A: Docker Compose (recomendada)
 
 ```bash
-cp .env.example .env          # editar secretos JWT y password de Postgres
+cp .env.example .env          # editar secretos JWT y passwords de Postgres
 docker compose up --build
 ```
+
+> El backend se conecta con un rol de aplicacion de minimo privilegio (`POSTGRES_USER`),
+> creado por `postgres/init/01-app-role.sh` al inicializar un volumen nuevo. Si ya tenias
+> un volumen previo, recrealo con `docker compose down -v` para aplicar el rol.
 
 El backend aplica las migraciones automaticamente al iniciar (`prisma migrate deploy`).
 - Frontend (nginx): `http://localhost:8080`

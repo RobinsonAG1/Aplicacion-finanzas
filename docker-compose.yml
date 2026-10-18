@@ -4,15 +4,21 @@ services:
     container_name: finanzas_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-finanzas}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finanzas}
+      # Admin del contenedor (superusuario): solo para init y healthcheck.
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-finanzas}
+      # Rol de aplicacion (minimo privilegio) que usa el backend.
+      APP_DB_USER: ${POSTGRES_USER:-finanzas}
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD:-finanzas}
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      # Solo loopback: PostgreSQL no queda expuesto a la red externa.
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-finanzas} -d ${POSTGRES_DB:-finanzas}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_ADMIN_USER:-postgres} -d ${POSTGRES_DB:-finanzas}']
       interval: 10s
       timeout: 5s
       retries: 5
