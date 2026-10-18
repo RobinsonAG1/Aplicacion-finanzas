@@ -63,4 +63,29 @@ describe('Drawer', () => {
 
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+
+  it('enfoca el primer campo al abrir', () => {
+    render(
+      <Drawer open onClose={vi.fn()} label="Formulario">
+        <input aria-label="Nombre" />
+        <button type="button">Guardar</button>
+      </Drawer>,
+    )
+
+    expect(screen.getByLabelText('Nombre')).toHaveFocus()
+  })
+
+  it('mantiene el foco dentro del panel al tabular', () => {
+    render(
+      <Drawer open onClose={vi.fn()} label="Formulario">
+        <input aria-label="Nombre" />
+      </Drawer>,
+    )
+
+    const input = screen.getByLabelText('Nombre')
+    input.focus()
+    fireEvent.keyDown(document, { key: 'Tab' })
+
+    expect(screen.getByRole('button', { name: 'Cerrar' })).toHaveFocus()
+  })
 })

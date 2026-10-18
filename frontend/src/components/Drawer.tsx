@@ -5,6 +5,9 @@ import { createPortal } from 'react-dom'
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+const FIRST_FIELD =
+  'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled])'
+
 type DrawerProps = {
   open: boolean
   onClose: () => void
@@ -26,7 +29,13 @@ export function Drawer({ open, onClose, label, children }: DrawerProps) {
 
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    panelRef.current?.focus()
+
+    const panel = panelRef.current
+    const target =
+      panel?.querySelector<HTMLElement>(FIRST_FIELD) ??
+      panel?.querySelector<HTMLElement>('.btn-primary:not([disabled])') ??
+      panel
+    target?.focus()
 
     return () => {
       document.body.style.overflow = previousOverflow
@@ -55,11 +64,12 @@ export function Drawer({ open, onClose, label, children }: DrawerProps) {
 
       const firstNode = nodes[0]
       const lastNode = nodes[nodes.length - 1]
+      const active = document.activeElement
 
-      if (event.shiftKey && document.activeElement === firstNode) {
+      if (event.shiftKey && (active === firstNode || active === panel)) {
         event.preventDefault()
         lastNode.focus()
-      } else if (!event.shiftKey && document.activeElement === lastNode) {
+      } else if (!event.shiftKey && active === lastNode) {
         event.preventDefault()
         firstNode.focus()
       }
