@@ -1,0 +1,1219 @@
+# Documentación técnica — Aplicación de Finanzas Personales (COP)
+
+> Gestor de finanzas personales estilo dashboard (tipo Monzo) con modelado relacional
+> completo, API REST, SPA React y visualización de datos. Moneda: **Peso colombiano (COP)**,
+> locale `es-CO`.
+>
+> Documento único de referencia: visión, arquitectura, modelo de datos, API completa,
+> lógica de negocio, frontend, seguridad (con auditoría), operación, despliegue, testing
+> y convenciones.
+
+---
+
+## Índice
+
+1. [Resumen ejecutivo](#1-resumen-ejecutivo)
+2. [Visión general](#2-visión-general)
+3. [Arquitectura](#3-arquitectura)
+4. [Stack tecnológico](#4-stack-tecnológico)
+5. [Estructura del repositorio](#5-estructura-del-repositorio)
+6. [Modelo de datos](#6-modelo-de-datos)
+7. [API REST](#7-api-rest)
+8. [Lógica de negocio](#8-lógica-de-negocio)
+9. [Frontend](#9-frontend)
+10. [Seguridad](#10-seguridad)
+11. [Variables de entorno](#11-variables-de-entorno)
+12. [Base de datos y operación](#12-base-de-datos-y-operación)
+13. [Puesta en marcha](#13-puesta-en-marcha)
+14. [Despliegue](#14-despliegue)
+15. [Testing](#15-testing)
+16. [Convenciones y contribución](#16-convenciones-y-contribución)
+17. [Apéndices](#17-apéndices)
+
+---
+
+## 1. Resumen ejecutivo
+
+Aplicación **full-server** (no serverless) para gestionar finanzas personales en pesos
+colombianos. Está dividida en dos proyectos independientes que se comunican **solo por
+HTTP**:
+
+- **`backend/`** — API REST en Express 5 + TypeScript ESM, PostgreSQL y Prisma 7. Cubre
+  autenticación, cuentas, categorías, transacciones (con importación/exportación CSV),
+  presupuestos, huchas de ahorro, facturas recurrentes con recordatorios y analítica con
+  window functions de SQL.
+- **`frontend/`** — SPA en React 19 + Vite + TypeScript, con React Router 7 y Recharts.
+  Servida por nginx en producción (que además proxya `/api` al backend).
+
+**Capacidades clave**
+
+| Área | Qué ofrece |
+|---|---|
+| Autenticación | Registro, login, `me`, refresh con **rotación** de tokens y logout revocable |
+| Cuentas | CRUD con tipos (corriente, ahorros, crédito, efectivo, inversión) y saldo |
+| Categorías | CRUD con color, tipo (ingreso/gasto) y reglas de unicidad por tipo |
+| Transacciones | CRUD, filtros, búsqueda, paginación, orden, sugerencia de categoría, CSV import/export |
+| Presupuestos | Límites por categoría de gasto, cálculo de gasto/avance por ventana temporal |
+| Huchas | Metas de ahorro con depósitos/retiros e historial |
+| Facturas | Recurrentes por día de vencimiento, pago que genera gasto, recordatorios (stub) |
+| Analítica | Resumen, serie mensual, tendencias por categoría y evolución de saldo |
+| Empaquetado | Dockerfiles (backend + nginx), `docker-compose.yml`, entrypoint con migraciones |
+| CI | GitHub Actions: lint, tipos, tests y build de backend y frontend |
+
+**Estado actual**: backend con **71 pruebas** de integración; frontend con **50 pruebas**
+(Vitest + Testing Library). CI configurada. Auditoría de seguridad realizada con un plan
+de endurecimiento pendiente (ver [sección 10](#10-seguridad)).
+
+---
+
+## 2. Visión general
+
+### 2.1 Problema y objetivo
+
+Centralizar las finanzas personales de un usuario en COP para responder a preguntas como:
+¿cuánto ingresé y gasté este mes?, ¿en qué categorías se va el dinero?, ¿voy cumpliendo mis
+presupuestos?, ¿cuánto he ahorrado para una meta?, ¿qué facturas vencen pronto?
+
+### 2.2 Alcance
+
+| Dentro del alcance | Fuera del alcance (por ahora) |
+|---|---|
+| Un usuario por cuenta (multi-tenant por `userId`) | Cuentas compartidas / hogar |
+| Moneda COP centralizada | Multimoneda real (el campo `currency` existe pero no se convierte) |
+| Recordatorios de facturas simulados (`LOG`) | Envío real de correo (`EMAIL` es enum, no implementado) |
+| Analítica descriptiva | Inversiones, préstamos, impuestos, presupuestos compartidos |
+| Despliegue en contenedores | App móvil nativa |
+
+### 2.3 Glosario
+
+- **Cuenta (`Account`)**: contenedor de dinero con saldo y tipo.
+- **Transacción (`Transaction`)**: movimiento (`INCOME`, `EXPENSE`, `TRANSFER`) asociado a
+  una cuenta y, opcionalmente, a una categoría.
+- **Categoría (`Category`)**: clasificación de ingresos o gastos con color.
+- **Presupuesto (`Budget`)**: límite de gasto para una categoría en un periodo.
+- **Hucha (`Pot`)**: meta de ahorro con saldo aparte del saldo de cuentas.
+- **Factura (`RecurringBill`)**: gasto recurrente por día del mes.
+- **Recordatorio (`BillReminder`)**: aviso generado para el vencimiento de una factura.
+- **Ventana (`window`)**: rango de fechas efectivo en que aplica un presupuesto.
+- **IDOR**: *Insecure Direct Object Reference*; aquí mitigado verificando propiedad por
+  `userId` en cada acceso.
+
+---
+
+## 3. Arquitectura
+
+### 3.1 Diagrama de despliegue
+
+```mermaid
+flowchart LR
+  subgraph Cliente
+    U["Navegador"]
+  end
+
+  subgraph Docker["Docker Compose / Coolify"]
+    W["web (nginx :80 → host :8080)<br/>SPA + proxy /api"]
+    A["backend (Express :4000)"]
+    P[("PostgreSQL :5432")]
+  end
+
+  U -->|"HTTP/HTTPS"| W
+  W -->|"/api/* → proxy_pass"| A
+  A -->|"Prisma · SQL"| P
+```
+
+- En **producción**, nginx sirve la SPA y reenvía `/api/` a `backend:4000`: mismo origen,
+  sin CORS.
+- En **desarrollo**, la SPA (Vite `:5173`) llama directamente a `http://localhost:4000/api`,
+  por lo que CORS sí aplica (`CORS_ORIGIN`).
+
+### 3.2 Arquitectura del backend (por capas)
+
+```mermaid
+flowchart TD
+  R["routes/*.route.ts<br/>definición HTTP + validación + auth"] --> C["controllers/*.controller.ts<br/>traducen HTTP ↔ dominio"]
+  C --> S["services/*.service.ts<br/>reglas de negocio y transacciones"]
+  S --> RP["repositories/*.repository.ts<br/>acceso a datos"]
+  RP --> DB["Prisma Client (adapter pg) → PostgreSQL"]
+  MW["middlewares<br/>auth · validate · errorHandler · notFound · upload"] -.-> R
+  U["utils<br/>jwt · password · csv · AppError · asyncHandler · authContext"] -.-> C
+  CFG["config<br/>env (Zod) · logger (pino)"] -.-> R
+```
+
+Reglas de esta arquitectura:
+
+1. **Rutas** solo montan handlers, aplican `authenticate` y esquemas Zod; no contienen lógica.
+2. **Controladores** extraen el `userId` (`requireUserId`), parsean query/params puntuales y
+   definen el código HTTP y el envoltorio de respuesta.
+3. **Servicios** contienen la lógica de negocio y usan `prisma.$transaction` cuando hay que
+   mantener invariantes (p. ej. saldo de cuenta).
+4. **Repositorios** encapsulan Prisma; la mayoría expone `findOwned(id, userId)` para forzar
+   la propiedad (anti-IDOR).
+5. **Errores**: los servicios lanzan `AppError` (con `statusCode` y `code`); un único
+   `errorHandler` los serializa.
+
+### 3.3 Arquitectura del frontend
+
+```mermaid
+flowchart TD
+  M["main.tsx<br/>BrowserRouter + AuthProvider"] --> AP["App.tsx<br/>rutas + React.lazy"]
+  AP --> PR["ProtectedRoute<br/>(guard de sesión)"]
+  PR --> L["Layout<br/>sidebar + topbar + Suspense"]
+  L --> PG["pages/*<br/>una página por feature"]
+  PG --> F["features/*<br/>formularios y paneles"]
+  PG --> H["hooks/useAsyncData"]
+  F --> API["api/*.ts<br/>client.ts (fetch + refresh)"]
+  H --> API
+  API --> LS["lib/tokens.ts (localStorage)"]
+  API --> ENV["lib/env.ts (VITE_API_URL)"]
+```
+
+### 3.4 Flujo de una petición autenticada
+
+```mermaid
+sequenceDiagram
+  participant U as Usuario
+  participant P as Página React
+  participant C as api/client.ts
+  participant A as API Express
+  participant H as authenticate
+  participant S as Service
+  participant D as PostgreSQL
+
+  U->>P: interacción
+  P->>C: apiRequest('/accounts')
+  C->>A: GET /api/accounts (Bearer access)
+  A->>H: verifyAccessToken (jose HS256)
+  H->>S: req.user = { id, email }
+  S->>D: SELECT ... WHERE "userId" = id
+  D-->>S: filas
+  S-->>A: datos
+  A-->>C: 200 { data }
+  C-->>P: datos parseados
+  P-->>U: UI actualizada
+
+  Note over C,A: Si el access expira (401),<br/>client.ts hace refresh una sola vez<br/>(refreshInFlight dedupe) y reintenta.
+```
+
+---
+
+## 4. Stack tecnológico
+
+### 4.1 Backend
+
+| Categoría | Tecnología | Versión | Notas |
+|---|---|---|---|
+| Runtime | Node.js | >= 20 (CI: 22) | ESM, `"type": "module"` |
+| Framework | Express | ^5.3.0 | Middlewares async nativos |
+| Lenguaje | TypeScript | ^6.0.3 | `moduleResolution: NodeNext`, imports con `.js` |
+| Base de datos | PostgreSQL | 16+ (local: 18.4) | `Decimal(16,2)`, window functions |
+| ORM | Prisma | 7.10.1 | Generador `prisma-client` a `src/generated/prisma` |
+| Driver | `@prisma/adapter-pg` + `pg` | 7.10.1 / 8.23.1 | Adaptador `PrismaPg` |
+| Auth | `jose` (HS256) + `@node-rs/argon2` | 6.2.12 / 2.2.2 | Access + refresh; Argon2id |
+| Validación | Zod | ^4.6.7 | Esquemas por recurso |
+| Seguridad HTTP | `helmet` + `cors` + `express-rate-limit` | 8.3 / 2.8 / 8.7 | Cabeceras, CORS, límite global |
+| Subidas | `multer` | ^2.4.0 | Memoria, límite 5 MB, filtro CSV |
+| Logs | `pino` + `pino-http` | ^10 / ^11 | Pretty en desarrollo |
+| Tests | `vitest` + `supertest` | ^5 / ^7 | Integración sobre HTTP |
+| Lint/format | `eslint` + `typescript-eslint` + `prettier` | 10 / 8.71 / 3.9 | |
+
+### 4.2 Frontend
+
+| Categoría | Tecnología | Versión | Notas |
+|---|---|---|---|
+| UI | React | ^19.2.8 | `StrictMode` |
+| Build | Vite | ^8.3.0 | `@vitejs/plugin-react` |
+| Lenguaje | TypeScript | ~6.0.2 | Sin enums (`erasableSyntaxOnly`) |
+| Router | react-router-dom | ^7.18.4 | `BrowserRouter` + `React.lazy` |
+| Gráficas | recharts | ^3.10.1 | Barras, líneas, pie |
+| Tests | vitest + Testing Library + jsdom | ^5 / ^16 / ^30 | `globals: true` |
+| Lint | oxlint | ^1.81.0 | |
+| Servidor prod | nginx | 1.27-alpine | SPA fallback + proxy `/api` |
+
+---
+
+## 5. Estructura del repositorio
+
+```text
+.
+├── backend/                          API REST (proyecto independiente)
+│   ├── prisma/
+│   │   ├── schema.prisma             10 modelos + 7 enums
+│   │   ├── migrations/               migración inicial
+│   │   └── seed.ts                   seed determinista (usuario demo)
+│   ├── src/
+│   │   ├── app.ts                    createApp(): helmet, cors, rate limit, rutas
+│   │   ├── server.ts                 arranque + apagado ordenado + handlers de proceso
+│   │   ├── config/
+│   │   │   ├── env.ts                validación de entorno con Zod
+│   │   │   └── logger.ts             pino (pretty en dev)
+│   │   ├── db/prisma.ts              PrismaClient con adapter PrismaPg
+│   │   ├── middlewares/              auth, errorHandler, notFound, upload, validate
+│   │   ├── routes/                   index + una ruta por recurso
+│   │   ├── controllers/              una capa fina por recurso
+│   │   ├── services/                 reglas de negocio (incl. transactionCsv)
+│   │   ├── repositories/             acceso a datos (incl. analytics con SQL raw)
+│   │   ├── schemas/                  esquemas Zod de entrada
+│   │   ├── types/                    auth.ts + express.d.ts (req.user)
+│   │   ├── utils/                    jwt, password, csv, AppError, asyncHandler, authContext
+│   │   └── generated/prisma/         cliente generado (gitignored)
+│   ├── tests/                        pruebas de integración + helpers + global-setup
+│   ├── Dockerfile                    build multi-stage + runtime con USER node
+│   ├── docker-entrypoint.sh          prisma migrate deploy + node dist/server.js
+│   ├── eslint.config.js / .prettierrc.json
+│   ├── prisma7.config.ts             config de Prisma 7 (schema, migrations, seed)
+│   └── .env.example
+├── frontend/                         SPA React (proyecto independiente)
+│   ├── src/
+│   │   ├── api/                      client.ts + un módulo por recurso + types.ts
+│   │   ├── components/               Layout, ProtectedRoute
+│   │   ├── features/                 auth, transactions, pots, bills
+│   │   ├── hooks/useAsyncData.ts     hook de carga de datos
+│   │   ├── lib/                      env, tokens, formatCOP, labels, dates
+│   │   ├── pages/                    una página por ruta (+ tests)
+│   │   ├── test/setup.ts             jest-dom + polyfill ResizeObserver
+│   │   ├── App.tsx / main.tsx / index.css
+│   │   └── env.d.ts
+│   ├── Dockerfile                    build Vite + nginx
+│   ├── nginx.conf                    SPA fallback + proxy /api + gzip + cache
+│   ├── vite.config.ts                plugin React + config vitest
+│   └── .env.example
+├── .github/workflows/ci.yml          CI (backend + frontend)
+├── docker-compose.yml                postgres + backend + web
+├── .env.example                      variables para docker compose
+├── README.md                         guía breve de arranque
+└── DOCUMENTACION.md                  este documento
+```
+
+---
+
+## 6. Modelo de datos
+
+Definido en `backend/prisma/schema.prisma`. **10 tablas y 7 enums**, con **14 claves
+foráneas**. Los importes usan `Decimal(16,2)`; los IDs son `cuid()`.
+
+### 6.1 Diagrama entidad-relación
+
+```mermaid
+erDiagram
+  User ||--o{ RefreshToken : tiene
+  User ||--o{ Account : posee
+  User ||--o{ Category : define
+  User ||--o{ Transaction : registra
+  User ||--o{ Budget : define
+  User ||--o{ Pot : crea
+  User ||--o{ RecurringBill : programa
+
+  Account ||--o{ Transaction : contiene
+  Category ||--o{ Transaction : clasifica
+  Category ||--o{ Budget : limita
+  Category ||--o{ RecurringBill : etiqueta
+  Pot ||--o{ PotTransaction : registra
+  RecurringBill ||--o{ BillReminder : genera
+  Transaction ||--o{ RecurringBill : "paga (sourceTransaction)"
+```
+
+### 6.2 Enums
+
+| Enum | Valores |
+|---|---|
+| `AccountType` | `CHECKING`, `SAVINGS`, `CREDIT`, `CASH`, `INVESTMENT` |
+| `CategoryType` | `INCOME`, `EXPENSE` |
+| `TransactionType` | `INCOME`, `EXPENSE`, `TRANSFER` |
+| `BudgetPeriod` | `WEEKLY`, `MONTHLY`, `QUARTERLY`, `YEARLY` |
+| `PotTransactionType` | `DEPOSIT`, `WITHDRAW` |
+| `ReminderChannel` | `EMAIL`, `LOG` |
+| `ReminderStatus` | `PENDING`, `SENT`, `FAILED` |
+
+### 6.3 Tablas
+
+| Tabla | Campos destacados | Reglas / índices |
+|---|---|---|
+| `users` | `id`, `email` (único), `passwordHash`, `name`, `createdAt`, `updatedAt` | — |
+| `refresh_tokens` | `tokenHash` (único), `expiresAt`, `revokedAt`, `userAgent`, `ip` | índice `userId`; cascade al borrar usuario |
+| `accounts` | `name`, `type`, `balance Decimal(16,2)`, `currency` (def. `COP`) | índice `userId` |
+| `categories` | `name`, `type`, `color`, `isCustom` | único `(userId, name, type)`; índice `userId` |
+| `transactions` | `amount`, `type`, `description`, `merchant`, `date` | índices `(userId,date)`, `categoryId`, `merchant`, `(accountId,date)` |
+| `budgets` | `limitAmount`, `period`, `startDate`, `endDate` | índices `userId`, `categoryId` |
+| `pots` | `targetAmount`, `currentAmount`, `color` | índice `userId` |
+| `pot_transactions` | `amount`, `type`, `date`, `note` | índice `(potId,date)` |
+| `recurring_bills` | `amount`, `dueDay`, `isActive`, `sourceTransactionId` | índices `userId`, `categoryId` |
+| `bill_reminders` | `dueDate`, `channel`, `status`, `sentAt` | índice `(billId,dueDate)` |
+
+### 6.4 Reglas de integridad (borrado)
+
+- `User` → **cascade** sobre todas sus entidades.
+- `Account` → **cascade** sobre sus `transactions` (borrar cuenta borra movimientos).
+- `Category` → `SetNull` en `transactions` y `recurring_bills` (la transacción/factura
+  queda sin categoría al borrarla).
+- `RecurringBill.sourceTransaction` → `SetNull`.
+- `Pot` → **cascade** sobre `pot_transactions`.
+
+---
+
+## 7. API REST
+
+- **Base**: `http://localhost:4000/api` (dev) o `/api` (producción vía nginx).
+- **Autenticación**: `Authorization: Bearer <accessToken>` en todo salvo `health` y `auth/*`
+  públicos (`register`, `login`, `refresh`, `logout`).
+- **Formato de éxito**: `{ "data": ... }`; las listas paginadas añaden `meta`.
+- **Formato de error**:
+  ```json
+  { "error": { "message": "…", "code": "OPCIONAL", "details": "opcional" } }
+  ```
+- **Códigos**: `200` OK, `201` creado, `204` sin contenido, `400/401/404/409/415/422/429`.
+
+### 7.1 Resumen de endpoints
+
+| Método | Ruta | Auth | Descripción |
+|---|---|---|---|
+| GET | `/api/health` | No | Estado del servicio |
+| POST | `/api/auth/register` | No | Crear cuenta de usuario |
+| POST | `/api/auth/login` | No | Iniciar sesión |
+| POST | `/api/auth/refresh` | No | Rotar tokens |
+| POST | `/api/auth/logout` | No | Revocar refresh token |
+| GET | `/api/auth/me` | Sí | Usuario actual |
+| GET/POST | `/api/accounts` | Sí | Listar / crear cuentas |
+| GET/PUT/DELETE | `/api/accounts/:id` | Sí | Detalle / editar / borrar |
+| GET/POST | `/api/categories` | Sí | Listar / crear categorías |
+| GET/PUT/DELETE | `/api/categories/:id` | Sí | Detalle / editar / borrar |
+| GET | `/api/transactions` | Sí | Listar (filtros + paginación) |
+| POST | `/api/transactions` | Sí | Crear transacción |
+| GET/PUT/DELETE | `/api/transactions/:id` | Sí | Detalle / editar / borrar |
+| PATCH | `/api/transactions/:id/category` | Sí | Asignar/quitar categoría |
+| GET | `/api/transactions/suggestions` | Sí | Sugerir categoría por comercio |
+| GET | `/api/transactions/export.csv` | Sí | Exportar CSV |
+| POST | `/api/transactions/import` | Sí | Importar CSV |
+| GET/POST | `/api/budgets` | Sí | Listar / crear presupuestos |
+| GET | `/api/budgets/overview` | Sí | Avance de presupuestos |
+| GET/PUT/DELETE | `/api/budgets/:id` | Sí | Detalle / editar / borrar |
+| GET/POST | `/api/pots` | Sí | Listar / crear huchas |
+| GET/PUT/DELETE | `/api/pots/:id` | Sí | Detalle / editar / borrar |
+| POST | `/api/pots/:id/deposit` \| `/withdraw` | Sí | Movimientos de hucha |
+| GET/POST | `/api/bills` | Sí | Listar / crear facturas |
+| GET | `/api/bills/upcoming` | Sí | Próximos vencimientos |
+| POST | `/api/bills/reminders/run` | Sí | Generar recordatorios en lote |
+| GET/PUT/DELETE | `/api/bills/:id` | Sí | Detalle / editar / borrar |
+| GET/POST | `/api/bills/:id/reminders` | Sí | Listar / crear recordatorios |
+| POST | `/api/bills/:id/pay` | Sí | Pagar factura (crea gasto) |
+| GET | `/api/analytics/summary` | Sí | Totales + desglose |
+| GET | `/api/analytics/monthly` | Sí | Serie mensual |
+| GET | `/api/analytics/category-trends` | Sí | Tendencias por categoría |
+| GET | `/api/analytics/balance-timeline` | Sí | Evolución del saldo |
+
+### 7.2 Health
+
+```bash
+curl http://localhost:4000/api/health
+# { "status": "ok", "service": "finanzas-backend", "uptime": 12.3, "timestamp": "...", "environment": "development" }
+```
+
+### 7.3 Autenticación
+
+**Registro** — `POST /api/auth/register`
+
+```bash
+curl -X POST http://localhost:4000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Ana","email":"ana@ejemplo.com","password":"Secreta123"}'
+```
+
+Campos: `name` (2–80), `email` (email válido, se normaliza a minúsculas), `password` (8–128).
+Respuesta `201`:
+
+```json
+{
+  "user": { "id": "cuid", "email": "ana@ejemplo.com", "name": "Ana", "createdAt": "..." },
+  "accessToken": "eyJ…",
+  "refreshToken": "eyJ…"
+}
+```
+
+**Login** — `POST /api/auth/login`
+
+```bash
+curl -X POST http://localhost:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@finanzas.test","password":"Demo1234!"}'
+```
+
+Credenciales inválidas → `401 { "error": { "code": "INVALID_CREDENTIALS" } }`.
+
+**Refresh** — `POST /api/auth/refresh` (rota el refresh: el anterior queda revocado)
+
+```bash
+curl -X POST http://localhost:4000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"eyJ…"}'
+```
+
+**Logout** — `POST /api/auth/logout` → `{ "success": true }`
+
+**Me** — `GET /api/auth/me`
+
+```bash
+curl http://localhost:4000/api/auth/me -H "Authorization: Bearer $ACCESS"
+# { "user": { "id": "…", "email": "…", "name": "…", "createdAt": "…" } }
+```
+
+### 7.4 Cuentas
+
+```bash
+# Listar
+curl http://localhost:4000/api/accounts -H "Authorization: Bearer $ACCESS"
+
+# Crear
+curl -X POST http://localhost:4000/api/accounts \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"name":"Nequi","type":"CASH","balance":250000,"currency":"COP"}'
+
+# Actualizar / borrar
+curl -X PUT http://localhost:4000/api/accounts/$ID \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"name":"Nequi Personal"}'
+curl -X DELETE http://localhost:4000/api/accounts/$ID -H "Authorization: Bearer $ACCESS"
+```
+
+`type` ∈ `CHECKING | SAVINGS | CREDIT | CASH | INVESTMENT`. `balance` por defecto `0`.
+`currency` de 3 letras (def. `COP`). En `PUT` debe enviarse al menos un campo.
+
+### 7.5 Categorías
+
+```bash
+curl -X POST http://localhost:4000/api/categories \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"name":"Mascotas","type":"EXPENSE","color":"#f59e0b"}'
+```
+
+`name` (1–60), `type` ∈ `INCOME | EXPENSE`, `color` hex `#RRGGBB` (def. `#64748b`).
+Nombre+tipo duplicado → `409 CATEGORY_EXISTS`. En `PUT` **no** se puede cambiar el tipo.
+
+### 7.6 Transacciones
+
+**Listar** — `GET /api/transactions`
+
+| Query | Valores | Def. |
+|---|---|---|
+| `page` | entero ≥ 1 | 1 |
+| `limit` | entero 1–100 | 10 |
+| `search` | texto (comercio o descripción) | — |
+| `sort` | `date` \| `amount` \| `createdAt` | `date` |
+| `order` | `asc` \| `desc` | `desc` |
+| `categoryId`, `accountId` | id | — |
+| `type` | `INCOME` \| `EXPENSE` \| `TRANSFER` | — |
+| `from`, `to` | fecha ISO | — |
+
+```bash
+curl "http://localhost:4000/api/transactions?page=1&limit=10&search=uber&type=EXPENSE&order=desc" \
+  -H "Authorization: Bearer $ACCESS"
+# { "data": [ … ], "meta": { "total": 12, "page": 1, "limit": 10, "totalPages": 2 } }
+```
+
+**Crear** — `POST /api/transactions`
+
+```bash
+curl -X POST http://localhost:4000/api/transactions \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"accountId":"'$ACC'","categoryId":"'$CAT'","amount":45000,"type":"EXPENSE","merchant":"Uber","date":"2026-10-18"}'
+```
+
+`amount > 0` (magnitud; el signo lo da `type`), `date` parseable. Ajusta el saldo de la
+cuenta de forma atómica. Si `categoryId` no pertenece al usuario → `404 CATEGORY_NOT_FOUND`.
+
+**Cambiar categoría** — `PATCH /api/transactions/:id/category`
+
+```bash
+curl -X PATCH http://localhost:4000/api/transactions/$ID/category \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"categoryId":null}'
+```
+
+**Sugerencias** — `GET /api/transactions/suggestions?merchant=uber`
+
+```json
+{ "suggestions": [ { "category": { "id": "…", "name": "Transporte", "color": "#0ea5e9", "type": "EXPENSE" }, "count": 7, "confidence": 0.58 } ] }
+```
+
+**Exportar CSV** — `GET /api/transactions/export.csv?...` (mismos filtros que `list`, sin
+paginación). Devuelve `text/csv` con BOM UTF-8. Cabeceras:
+`fecha,tipo,monto,cuenta,categoria,comercio,descripcion`.
+
+```bash
+curl -L "http://localhost:4000/api/transactions/export.csv?type=EXPENSE" \
+  -H "Authorization: Bearer $ACCESS" -o transacciones.csv
+```
+
+**Importar CSV** — `POST /api/transactions/import` (multipart `file`, o cuerpo `text/csv`)
+
+```bash
+curl -X POST http://localhost:4000/api/transactions/import \
+  -H "Authorization: Bearer $ACCESS" -F "file=@mis_movimientos.csv"
+# { "data": { "total": 30, "imported": 27, "skipped": 1, "errors": [ { "row": 5, "message": "cuenta no encontrada: \"X\"" } ] } }
+```
+
+Ver [sección 8.6](#86-importación-y-exportación-csv) para el detalle del formato.
+
+### 7.7 Presupuestos
+
+```bash
+# Listar (opcional ?period=MONTHLY)
+curl "http://localhost:4000/api/budgets" -H "Authorization: Bearer $ACCESS"
+
+# Crear
+curl -X POST http://localhost:4000/api/budgets \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"categoryId":"'$CAT'","limitAmount":500000,"period":"MONTHLY","startDate":"2026-10-01","endDate":null}'
+
+# Overview (avance del periodo)
+curl "http://localhost:4000/api/budgets/overview?from=2026-10-01&to=2026-10-31" \
+  -H "Authorization: Bearer $ACCESS"
+```
+
+Respuesta de `overview`:
+
+```json
+{
+  "data": {
+    "from": "2026-10-01T00:00:00.000Z",
+    "to": "2026-10-31T23:59:59.999Z",
+    "budgets": [
+      { "id": "…", "category": { "id": "…", "name": "Transporte", "color": "#0ea5e9", "type": "EXPENSE" },
+        "limitAmount": "400000.00", "period": "MONTHLY", "startDate": "…", "endDate": null,
+        "spent": 285000, "remaining": 115000, "percentage": 71.3, "exceeded": false,
+        "window": { "from": "…", "to": "…" } }
+    ],
+    "totals": { "limitAmount": 3400000, "spent": 2100000, "remaining": 1300000 }
+  }
+}
+```
+
+Solo se presupuestan **categorías de gasto**; lo contrario → `422 BUDGET_INVALID_CATEGORY`.
+
+### 7.8 Huchas
+
+```bash
+curl -X POST http://localhost:4000/api/pots \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"name":"Viaje","targetAmount":2000000,"color":"#22c55e"}'
+
+curl -X POST http://localhost:4000/api/pots/$ID/deposit \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"amount":300000,"note":"Aporte mensual"}'
+
+curl -X POST http://localhost:4000/api/pots/$ID/withdraw \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"amount":100000}'
+```
+
+`GET /api/pots/:id?limit=20` devuelve la hucha con sus últimos movimientos. Retirar más del
+saldo → `422 POT_INSUFFICIENT_FUNDS`. Las huchas **no** alteran el saldo de las cuentas.
+
+### 7.9 Facturas
+
+```bash
+# Listar (?isActive=true|false)
+curl "http://localhost:4000/api/bills?isActive=true" -H "Authorization: Bearer $ACCESS"
+
+# Crear
+curl -X POST http://localhost:4000/api/bills \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"name":"Internet","amount":120000,"categoryId":"'$CAT'","dueDay":15,"isActive":true}'
+
+# Próximos vencimientos (días)
+curl "http://localhost:4000/api/bills/upcoming?days=30" -H "Authorization: Bearer $ACCESS"
+
+# Pagar (crea un gasto y lo enlaza)
+curl -X POST http://localhost:4000/api/bills/$ID/pay \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"accountId":"'$ACC'","amount":120000}'
+
+# Recordatorios de una factura
+curl http://localhost:4000/api/bills/$ID/reminders -H "Authorization: Bearer $ACCESS"
+curl -X POST http://localhost:4000/api/bills/$ID/reminders \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"channel":"LOG","send":true}'
+
+# Generar recordatorios en lote para los próximos N días
+curl -X POST http://localhost:4000/api/bills/reminders/run \
+  -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d '{"days":7,"channel":"LOG"}'
+```
+
+`dueDay` 1–31 (clamp al último día del mes si el mes no lo tiene). Crear un recordatorio
+duplicado (misma factura + fecha) → `409 REMINDER_EXISTS`. Los recordatorios son **stub**:
+registran `LOG` y son idempotentes por `(billId, dueDate)`.
+
+### 7.10 Analítica
+
+| Endpoint | Query | Devuelve |
+|---|---|---|
+| `/analytics/summary` | `from`, `to` | `totals {income, expense, net, savingsRate}`, `byCategory[]`, `byAccount[]` |
+| `/analytics/monthly` | `months` (1–24, def. 6) | `months[] {month, income, expense, net, cumulativeNet}` |
+| `/analytics/category-trends` | `months` (1–24, def. 6) | `trends[] {month, categoryId, categoryName, color, total, previous, changePct}` |
+| `/analytics/balance-timeline` | `from`, `to`, `limit` (1–2000, def. 500) | `timeline[] {date, delta, runningBalance}` |
+
+```bash
+curl "http://localhost:4000/api/analytics/summary?from=2026-10-01&to=2026-10-31" \
+  -H "Authorization: Bearer $ACCESS"
+```
+
+Si no se envían fechas, `summary` usa del **inicio del mes actual** hasta ahora.
+
+---
+
+## 8. Lógica de negocio
+
+### 8.1 Montos y signos
+
+- Los importes se almacenan como **magnitud positiva** (`Decimal(16,2)`); el signo lo
+  determina `type` (`INCOME` suma, `EXPENSE`/`TRANSFER` restan saldo).
+- El frontend formatea con `Intl.NumberFormat('es-CO', { currency: 'COP' })`.
+
+### 8.2 Saldo de cuenta (transacciones)
+
+`transactionService.create/update/remove` envuelven la operación en `prisma.$transaction`:
+
+- **Crear**: incrementa/decrementa el saldo según `signedAmount(type, amount)`.
+- **Actualizar**: revierte el efecto anterior y aplica el nuevo, incluso si cambia de cuenta.
+- **Borrar**: revierte el efecto y elimina la fila.
+
+Se valida propiedad de `accountId` y `categoryId` antes de operar (anti-IDOR).
+
+### 8.3 Presupuestos
+
+- Solo aplican a categorías `EXPENSE` (validado en create/update).
+- `overview` intersecta la ventana del presupuesto con el rango consultado
+  (`intersect`): `window = [max(startDate, from), min(endDate ?? to, to)]`.
+- Suma los gastos de la categoría dentro de esa ventana y calcula `spent`, `remaining`,
+  `percentage` y `exceeded` (`spent > limit`).
+
+### 8.4 Huchas
+
+- `currentAmount` se mantiene con `increment`/`decrement` en una transacción atómica junto
+  al registro del `PotTransaction`.
+- `withdraw` valida saldo suficiente (`POT_INSUFFICIENT_FUNDS`).
+- `percentage`, `remaining` y `completed` (`current >= target`) se calculan al serializar.
+- Las huchas son un bolsillo independiente: no afectan `Account.balance`.
+
+### 8.5 Facturas y recordatorios
+
+- La factura es un gasto **recurrente** por `dueDay`.
+- `billTiming` calcula el próximo vencimiento (o el del mes actual si está vencido y no
+  pagado), los días restantes y si está vencida.
+- `overdue` = activa, día ya pasado y sin pago este mes (se detecta por `sourceTransaction`).
+- **Pagar** (`pay`) crea un `EXPENSE` vía `transactionService` (ajusta saldo) y enlaza la
+  transacción como `sourceTransactionId`.
+- **Recordatorios**: `createReminder` y `runReminders` son idempotentes por
+  `(billId, dueDate)`; el "envío" es un `logger.info(..., { stub: true })`.
+
+### 8.6 Importación y exportación CSV
+
+**Export** (`transactionCsv.service.ts` → `utils/csv.ts`):
+- Cabecera `fecha,tipo,monto,cuenta,categoria,comercio,descripcion`.
+- Fechas `YYYY-MM-DD`, montos `toFixed(2)`, tipo en español (`ingreso`/`gasto`/`transferencia`).
+- BOM UTF-8 al inicio (`\uFEFF`) para Excel.
+- Escapado CSV básico (comillas, comas, saltos de línea).
+
+**Import**:
+- Parser CSV propio (soporta comillas y comillas escapadas `""`).
+- Alias de columnas aceptados (ES/EN): `fecha/date`, `monto/valor/amount`, `tipo/type`,
+  `cuenta/account`, `categoria/category`, `comercio/merchant`, `descripcion/detalle/description`.
+- Requiere al menos `fecha` y `monto` (si no → `400 CSV_MISSING_COLUMNS`).
+- `parseAmount` entiende formatos `1.234,56` y `1,234.56`.
+- `parseDate` acepta `dd/mm/yyyy`, `dd-mm-yyyy` e ISO.
+- Resolución de cuenta por nombre (normalizado, sin acentos) o por id.
+- Categoría por nombre y tipo (fallback: solo por nombre).
+- **Deduplicación** por clave `(cuenta, fecha, monto, tipo, comercio)` contra lo existente.
+- Devuelve `{ total, imported, skipped, errors[] }` con el número de fila de cada error.
+
+### 8.7 Analítica (SQL con window functions)
+
+`analytics.repository.ts` usa `$queryRaw` **parametrizado** (template tags):
+
+- `totals`: `SUM(...) FILTER (WHERE type=…)` + neto.
+- `expenseByCategory`: porcentaje con `SUM(SUM(...)) OVER ()` y `RANK() OVER (ORDER BY …)`.
+- `netByAccount`: `LEFT JOIN` con `accounts`, cuenta y neto por cuenta.
+- `monthlySeries`: `generate_series` de meses + `SUM(...) OVER (ORDER BY month)` para el
+  acumulado; los casts `::float8`/`::int` devuelven números, no strings de `Decimal`.
+- `categoryTrends`: `LAG(...)` por categoría para la variación mes a mes.
+- `balanceTimeline`: saldo acumulado con ventana `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`.
+
+### 8.8 Sugerencia de categoría
+
+`transactionService.suggestions(merchant)` busca hasta 500 transacciones recientes del
+usuario cuyo comercio contenga el término, cuenta categorías y devuelve las 3 más
+frecuentes con `confidence = count / total` (redondeado a 2 decimales).
+
+---
+
+## 9. Frontend
+
+### 9.1 Arranque y enrutado
+
+`main.tsx` monta `BrowserRouter > AuthProvider > App`. `App.tsx` define:
+
+- **Públicas (eager)**: `/login`, `/register`.
+- **Protegidas (lazy)**: tras `ProtectedRoute` y `Layout`: `/` (dashboard),
+  `/transactions`, `/budgets`, `/pots`, `/bills`, `/analytics`, `/accounts`,
+  `/categories` y `*` (404).
+
+El code-splitting usa `React.lazy(() => import(...).then(m => ({ default: m.X })))` y un
+`<Suspense>` en `Layout`. Esto aísla Recharts (chunk de `AnalyticsPage`) del bundle inicial.
+
+### 9.2 Cliente HTTP (`api/client.ts`)
+
+- `apiRequest`, `apiUpload`, `apiDownload` comparten `authFetch`.
+- `authFetch` añade `Authorization: Bearer` y, ante `401`, intenta **un** refresh y reintenta
+  (deduplicado con `refreshInFlight`).
+- `ApiError` lleva `status`, `code` y `details`.
+- `tokenStore` (`lib/tokens.ts`) persiste tokens en `localStorage` (a migrar a cookies
+  HttpOnly en la fase C de seguridad).
+
+### 9.3 Estado: `useAsyncData`
+
+Hook propio con `{ data, error, loading, reload }`. Las dependencias son `[fetcher, reloadKey]`,
+por lo que los `fetcher` deben ser estables (`useCallback`). Uso sistemático en páginas y
+paneles.
+
+### 9.4 Autenticación en el cliente
+
+- `AuthProvider` guarda `user`, hace bootstrap con `authApi.me()` si hay token, y expone
+  `login`, `register`, `logout`.
+- `ProtectedRoute` redirige a `/login` (recordando `from`) si no hay usuario.
+- `Layout` muestra el usuario y permite cerrar sesión.
+
+### 9.5 Página por página
+
+| Ruta | Página | Contenido | APIs |
+|---|---|---|---|
+| `/` | `DashboardPage` | 4 cards (ingresos/gastos/neto/tasa) + 4 paneles (vencimientos, presupuestos, huchas, últimas transacciones) | `analytics.summary`, `bills.upcoming`, `budgets.overview`, `pots.list`, `transactions.list` |
+| `/transactions` | `TransactionsPage` | Tabla con filtros, búsqueda debounced (300 ms), orden, paginación, export/import CSV, categorización inline | `transactions.*`, `accounts.list`, `categories.list` |
+| `/budgets` | `BudgetsPage` | Rango de fechas, cards de totales, lista de barras de progreso, CRUD | `budgets.overview/list`, `categories.list` |
+| `/pots` | `PotsPage` | Tarjetas de progreso, CRUD, paneles de depósito/retiro | `pots.*` |
+| `/bills` | `BillsPage` | Tabla con estado/vencimiento, CRUD, activar/desactivar, pagar, recordatorios, "generar recordatorios (7 días)" | `bills.*`, `accounts.list`, `categories.list` |
+| `/analytics` | `AnalyticsPage` | Selector 3/6/12 meses, 4 cards, barras ingresos vs gastos, pie por categoría, línea de saldo, tabla de variación | `analytics.*` |
+| `/accounts` | `AccountsPage` | Tabla + formulario crear/editar | `accounts.*` |
+| `/categories` | `CategoriesPage` | Tabla con color + formulario (tipo fijo al editar) | `categories.*` |
+| `/login`, `/register` | `LoginPage`, `RegisterPage` | Formularios con validación HTML5 (login prellenado con el demo) | `auth.*` |
+| `*` | `NotFoundPage` | 404 con enlace al resumen | — |
+
+### 9.6 Componentes de feature
+
+- `TransactionForm`: alta/edición, sugiere categorías por comercio (debounce 400 ms, ≥3
+  caracteres) y filtra categorías por tipo.
+- `PotMovePanel`: alterna depósito/retiro, muestra movimientos recientes.
+- `BillPayPanel`: paga la factura eligiendo cuenta/monto/fecha.
+- `BillRemindersPanel`: lista y crea recordatorios (`LOG`, `send: true`).
+
+### 9.7 Formato y estilos
+
+- `lib/formatCOP.ts`: `formatCOP`, `formatNumber`, `formatPercent` (locale `es-CO`).
+- `lib/dates.ts`: `formatDate`, `toDateInputValue`, `startOfMonthInput`, `endOfMonthInput`,
+  `formatMonthLabel`.
+- `lib/labels.ts`: etiquetas en español de tipos y periodos.
+- `index.css`: tema oscuro (variables CSS), clases reutilizables (`.card`, `.panel`,
+  `.data-table`, `.progress-fill`, `.badge`, `.charts`, etc.).
+
+---
+
+## 10. Seguridad
+
+### 10.1 Controles ya implementados
+
+- **Hashing de contraseñas** con Argon2id (`memoryCost 19456`, `timeCost 2`, `outputLen 32`).
+- **JWT**: access y refresh firmados (HS256, `jose`) con issuer/audience fijos y secretos
+  distintos (mínimo 32 caracteres validado por Zod).
+- **Refresh tokens hasheados** (SHA-256) en BD, con rotación, expiración y revocación.
+- **Autorización por propiedad**: todos los repositorios exponen `findOwned`; recursos
+  ajenos responden `404`.
+- **SQL parametrizado**: analítica con `$queryRaw` por template tags (incluido `limit`).
+- **Validación de entrada** con Zod en body, params y query.
+- **helmet**, **CORS** restringido por `CORS_ORIGIN`, **rate limit** global (300/15 min).
+- **Subida de CSV**: límite 5 MB, 1 archivo, allowlist de mimetype/extensión.
+- **Contenedor backend** ejecuta como usuario `node` (no root).
+- **Secretos**: `.env` nunca versionado (los `*.example` sí).
+
+### 10.2 Auditoría de los 11 puntos revisados
+
+| # | Punto | Estado | Detalle |
+|---|---|---|---|
+| 1 | Inyección SQL en SQL raw | OK | Uso de template tags parametrizados en `analytics.repository.ts` |
+| 2 | IDOR / control de propiedad | OK (con huecos de test) | `findOwned` en todos los repos; faltan tests de create/update con refs ajenas y de export/import |
+| 3 | Almacenamiento de tokens | Pendiente | Access y refresh en `localStorage`; refresh enviado en el body |
+| 4 | Reuso de refresh tokens | Parcial | Hay rotación y revoca en logout, pero **no** se detecta reuso para revocar la familia (`revokeAllForUser` existe y no se usa) |
+| 5 | Rate limiting | Parcial | Global 300/15 min + router de auth 50/15 min (compartido); conviene por endpoint |
+| 6 | Cabeceras de seguridad | Parcial | `helmet()` en Express OK; nginx sin CSP/HSTS/`X-Frame-Options` |
+| 7 | CSV (inyección / límites) | Parcial | Import con allowlist OK; export sin saneo anti fórmula y sin tope de filas/campos |
+| 8 | Seed en producción | Pendiente | `prisma/seed.ts` ejecuta `deleteMany` sin guardián de entorno |
+| 9 | Exposición de PostgreSQL | Pendiente | `docker-compose.yml` publica `5432:5432`; usuario por defecto es superusuario |
+| 10 | Superficie de imagen / dependencias | Parcial | Backend `USER node` OK; nginx corre como root; falta `npm audit`/Trivy en CI |
+| 11 | Fuga de datos en logs | Pendiente | `logger.ts` sin `redact`; `pino-http` serializa cabeceras (incl. `Authorization`) |
+
+### 10.3 Plan de endurecimiento (A → B → C)
+
+**Fase A — Backend, sin romper contratos**
+- Añadir `redact` en pino (cabeceras de autorización y cookies) — punto 11.
+- Guardián de entorno en `seed.ts` (abortar en producción) — punto 8.
+- Detección de reuso de refresh → `revokeAllForUser` + revocación en cascada — punto 4.
+- Saneo anti CSV-injection en export (`=`, `+`, `-`, `@`) y topes en import — punto 7.
+- Rate limit específico por endpoint de auth — punto 5.
+- Tests de IDOR en create/update y export/import — punto 2.
+
+**Fase B — Infraestructura y empaquetado**
+- Cabeceras de seguridad en nginx (CSP, HSTS, `X-Frame-Options`, etc.) — punto 6.
+- `docker-compose` sin publicar `5432` al host en producción; usuario/rol de BD de mínimo
+  privilegio — punto 9.
+- nginx como usuario no root — punto 10.
+- `npm audit` (y/o Trivy) en CI — punto 10.
+
+**Fase C — Autenticación en el cliente**
+- Migrar tokens a **cookies HttpOnly** (`Secure`, `SameSite`) con access en memoria y
+  protección CSRF — punto 3 (mismo coste de servidor: el refresh ya hace lookup + firma +
+  insert; no incrementa carga del VPS).
+- Ajustar `client.ts`, `AuthProvider` y CORS (`credentials: true`).
+
+> El plan está aprobado y **aún no ejecutado** al redactar este documento. Los cambios de
+> infraestructura (B) requieren Docker, no disponible en el entorno local de desarrollo;
+> quedan pendientes de verificación en un entorno con Docker.
+
+---
+
+## 11. Variables de entorno
+
+### 11.1 Backend (`backend/.env`)
+
+| Variable | Requerida | Def. | Descripción |
+|---|---|---|---|
+| `NODE_ENV` | No | `development` | `development` \| `test` \| `production` |
+| `PORT` | No | `4000` | Puerto HTTP |
+| `DATABASE_URL` | **Sí** | — | Cadena de conexión PostgreSQL |
+| `CORS_ORIGIN` | No | `http://localhost:5173` | Origen permitido |
+| `LOG_LEVEL` | No | `info` | `fatal`…`trace` \| `silent` |
+| `JWT_ACCESS_SECRET` | **Sí** | — | ≥ 32 caracteres |
+| `JWT_REFRESH_SECRET` | **Sí** | — | ≥ 32 caracteres, distinto del anterior |
+| `JWT_ACCESS_TTL` | No | `900` | TTL access en segundos |
+| `JWT_REFRESH_TTL` | No | `604800` | TTL refresh en segundos (7 días) |
+
+`env.ts` valida con Zod y **aborta el arranque** si algo falta o es inválido.
+
+### 11.2 Frontend (`frontend/.env`)
+
+| Variable | Def. | Descripción |
+|---|---|---|
+| `VITE_API_URL` | `http://localhost:4000/api` | URL base de la API (en Docker se compila como `/api`) |
+
+### 11.3 Docker Compose (`.env` en la raíz)
+
+| Variable | Def. | Descripción |
+|---|---|---|
+| `POSTGRES_USER` | `finanzas` | Usuario de PostgreSQL |
+| `POSTGRES_PASSWORD` | `finanzas` | Contraseña |
+| `POSTGRES_DB` | `finanzas` | Nombre de la BD |
+| `POSTGRES_PORT` | `5432` | Puerto publicado |
+| `BACKEND_PORT` | `4000` | Puerto del backend en el host |
+| `WEB_PORT` | `8080` | Puerto público del frontend (nginx) |
+| `CORS_ORIGIN` | `http://localhost:8080` | Origen permitido |
+| `LOG_LEVEL` | `info` | Nivel de logs |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | — | **Obligatorias** (`:?` en compose) |
+| `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | `900` / `604800` | TTL en segundos |
+
+Generar secretos:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+---
+
+## 12. Base de datos y operación
+
+### 12.1 Migraciones
+
+- Migración inicial: `prisma/migrations/20261017191026_init/migration.sql`.
+- En desarrollo: `npm run prisma:migrate` (`prisma migrate dev`).
+- En producción/contenedor: `prisma migrate deploy` (se ejecuta en `docker-entrypoint.sh`).
+- `prisma7.config.ts` define `schema`, carpeta de migraciones y el comando de seed.
+
+### 12.2 Seed
+
+`prisma/seed.ts` es **determinista** (`mulberry32` con semilla fija) y genera 6 meses de
+datos:
+
+- Usuario demo `demo@finanzas.test` / `Demo1234!`.
+- 6 cuentas (ahorros, efectivo, corriente, tarjeta de crédito, inversión).
+- 13 categorías (10 de gasto, 3 de ingreso).
+- ~198 transacciones (salario, intereses, freelance, gastos fijos y variables).
+- 6 presupuestos, 3 huchas, 8 facturas recurrentes con recordatorio.
+- Saldos de cuenta recalculados como base + neto de transacciones.
+
+```bash
+npm run seed   # prisma db seed
+```
+
+### 12.3 Acceso a la base (entorno local Windows)
+
+- PostgreSQL 18.4 nativo; `psql` en `C:\Program Files\PostgreSQL\18\bin\psql.exe`.
+- BD de desarrollo: `finanzas` (rol `finanzas`); BD de test: `finanzas_test`.
+- `npm run prisma:studio` abre el explorador de datos.
+
+### 12.4 Apagado ordenado
+
+`server.ts` maneja `SIGINT`/`SIGTERM`: cierra el servidor HTTP, desconecta Prisma y sale.
+También registra `unhandledRejection` y `uncaughtException` (este último termina el proceso).
+
+---
+
+## 13. Puesta en marcha
+
+### 13.1 Requisitos
+
+- Node.js >= 20 (recomendado 22).
+- PostgreSQL 16+ **o** Docker.
+- En Windows, usar `npm.cmd` si la ExecutionPolicy bloquea `npm.ps1`.
+
+### 13.2 Opción A — Docker Compose (recomendada)
+
+```bash
+cp .env.example .env          # editar secretos JWT y password de Postgres
+docker compose up --build
+```
+
+- Frontend (nginx): `http://localhost:8080`
+- API: `http://localhost:4000/api`
+
+El backend aplica migraciones al iniciar (`prisma migrate deploy`).
+
+### 13.3 Opción B — Local con PostgreSQL nativo
+
+Terminal 1 (backend):
+
+```bash
+cd backend
+cp .env.example .env          # ajustar DATABASE_URL y secretos JWT
+npm.cmd install
+npm.cmd run prisma:generate
+npm.cmd run prisma:migrate
+npm.cmd run seed
+npm.cmd run dev               # http://localhost:4000
+```
+
+Terminal 2 (frontend):
+
+```bash
+cd frontend
+cp .env.example .env          # VITE_API_URL apuntando al backend
+npm.cmd install
+npm.cmd run dev               # http://localhost:5173
+```
+
+### 13.4 Probar producción en local sin Docker
+
+```bash
+cd backend && npm.cmd run build && npm.cmd start        # :4000
+cd frontend && npm.cmd run build && npm.cmd run preview # :4173
+```
+
+Requiere ajustar `CORS_ORIGIN` en el backend al origen del `preview` (p. ej.
+`http://localhost:4173`).
+
+### 13.5 Comandos útiles
+
+| Backend | Frontend |
+|---|---|
+| `npm run dev` / `build` / `start` | `npm run dev` / `build` / `preview` |
+| `npm run typecheck` / `lint` / `format` | `npm run typecheck` / `lint` |
+| `npm run test` / `test:watch` | `npm run test` / `test:watch` |
+| `npm run prisma:generate` / `prisma:migrate` | — |
+| `npm run db:migrate:deploy` | — |
+| `npm run prisma:studio` / `seed` | — |
+
+---
+
+## 14. Despliegue
+
+### 14.1 Imágenes
+
+- **Backend** (`backend/Dockerfile`): build multi-stage (Node 22-slim). Compila TS y genera el
+  cliente Prisma en la etapa de build; la etapa de runtime instala solo dependencias de
+  producción, copia `dist`, `prisma` y el entrypoint, corre como `USER node`, expone `4000`
+  y trae un `HEALTHCHECK` contra `/api/health`.
+- **Frontend** (`frontend/Dockerfile`): build con Vite (`ARG VITE_API_URL=/api`) y runtime
+  `nginx:1.27-alpine` sirviendo `dist`, con `HEALTHCHECK` con `wget`.
+
+### 14.2 nginx (`frontend/nginx.conf`)
+
+- `listen 80`, gzip para texto/JS/JSON/SVG.
+- `location /api/` → `proxy_pass http://backend:4000` con cabeceras `X-Real-IP`,
+  `X-Forwarded-For`, `X-Forwarded-Proto`; `client_max_body_size 10m`.
+- `location /assets/` → cache 30 días `immutable`.
+- `location /` → SPA fallback `try_files $uri $uri/ /index.html`.
+
+### 14.3 Docker Compose
+
+Servicios: `postgres` (con volumen `finanzas_postgres_data` y healthcheck `pg_isready`),
+`backend` (depende de `postgres` saludable) y `web` (depende de `backend`). El backend lee
+la BD por el host interno `postgres`.
+
+### 14.4 Coolify
+
+1. Crear un recurso apuntando al repositorio con `docker-compose.yml`.
+2. Definir las variables de `.env.example` en el panel (secretos JWT y password de Postgres).
+3. El backend aplica migraciones antes de arrancar.
+4. El servicio `web` compila y sirve la SPA; exponer su puerto (`WEB_PORT`, def. 8080) en el
+   dominio público.
+5. Con proxy nginx no se necesita CORS; si se sirven en dominios distintos, apuntar
+   `CORS_ORIGIN` al del frontend.
+
+### 14.5 Integración continua
+
+`.github/workflows/ci.yml` corre en push/PR a `main`:
+
+- **Job `backend`**: servicio PostgreSQL 16, `npm ci`, generación de `.env.test`, `prisma
+  generate`, `typecheck`, `lint`, `test` (aplica migraciones) y `build`.
+- **Job `frontend`**: `npm ci`, `typecheck`, `lint`, `test`, `build`.
+
+Incluye `concurrency` (cancela ejecuciones previas) y `permissions: contents: read`.
+
+---
+
+## 15. Testing
+
+### 15.1 Backend (Vitest + Supertest)
+
+- **Integración sobre HTTP** con una app real y base de datos real.
+- `tests/global-setup.ts` aplica migraciones (`prisma migrate deploy`) contra `finanzas_test`.
+- Helpers en `tests/helpers`: `db` (limpieza entre tests), `auth` (obtener tokens) y
+  `fixtures` (datos de prueba).
+- **71 pruebas** repartidas en 9 archivos: `auth`, `accounts`, `categories`, `transactions`,
+  `transactions-csv`, `budgets`, `pots`, `bills`, `analytics`.
+
+```bash
+cd backend
+npm.cmd run test     # suite completa
+npm.cmd run test -- auth.test.ts   # archivo puntual
+```
+
+### 15.2 Frontend (Vitest + Testing Library + jsdom)
+
+- `vite.config.ts` configura `environment: 'jsdom'`, `globals: true` y
+  `setupFiles: ['./src/test/setup.ts']`.
+- `setup.ts` carga `@testing-library/jest-dom` y hace polyfill de `ResizeObserver`
+  (necesario para Recharts).
+- **50 pruebas**: módulos `api/*`, `lib/formatCOP`, páginas (`AccountsPage`,
+  `AnalyticsPage`, `BillsPage`, `BudgetsPage`, `DashboardPage`, `PotsPage`,
+  `TransactionsPage`).
+
+```bash
+cd frontend
+npm.cmd run test
+npm.cmd run test:watch
+```
+
+### 15.3 Verificación previa a un PR
+
+```bash
+# backend
+cd backend && npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && npm.cmd run build
+# frontend
+cd frontend && npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && npm.cmd run build
+```
+
+---
+
+## 16. Convenciones y contribución
+
+### 16.1 Estilo de código
+
+- **TypeScript ESM** en ambos proyectos; en backend los imports relativos llevan `.js`.
+- **Sin enums de TypeScript** (restricción `erasableSyntaxOnly`): se usan uniones de literales
+  o los enums generados por Prisma.
+- **Sin comentarios** salvo donde aportan (los `oxlint-disable` justifican reglas concretas).
+- Formato con **Prettier** (backend) y **oxlint** (frontend); lint con ESLint en backend.
+- Prefijo `I` desaconsejado; tipos como `PublicUser`, `TokenContext`, etc.
+
+### 16.2 Organización
+
+- Backend por capas (`routes → controllers → services → repositories`), un archivo por recurso.
+- Frontend por dominio (`api`, `features`, `pages`, `lib`, `hooks`, `components`).
+- Los `fetcher` de `useAsyncData` deben ser estables (`useCallback`).
+
+### 16.3 Flujo Git
+
+- Rama principal `main`; commits por tarea (`T1`, `T2`, …) con mensaje breve.
+- No se commitean `.env`, `dist/`, `node_modules/`, `coverage/` ni
+  `src/generated/prisma/`.
+- Antes de commitear: `git status`, `git diff` y ejecutar typecheck/lint/tests.
+
+### 16.4 Roadmap
+
+- [x] Modelo de datos y migraciones
+- [x] Autenticación JWT (con rotación de refresh)
+- [x] Cuentas, categorías y transacciones (CRUD, filtros, CSV)
+- [x] Presupuestos, huchas, facturas y recordatorios (stub)
+- [x] Analítica con window functions
+- [x] Frontend React + Recharts
+- [x] Integración continua (GitHub Actions)
+- [ ] Endurecimiento de seguridad (fases A/B/C, ver sección 10)
+- [ ] Despliegue continuo
+
+---
+
+## 17. Apéndices
+
+### 17.1 Receta rápida de `curl`
+
+```bash
+BASE=http://localhost:4000/api
+
+# 1) Login y captura de tokens
+ACCESS=$(curl -s -X POST $BASE/auth/login -H "Content-Type: application/json" \
+  -d '{"email":"demo@finanzas.test","password":"Demo1234!"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).accessToken')
+
+# 2) Primera cuenta y categoría
+ACC=$(curl -s $BASE/accounts -H "Authorization: Bearer $ACCESS" | node -pe 'JSON.parse(require("fs").readFileSync(0)).data[0].id')
+CAT=$(curl -s $BASE/categories -H "Authorization: Bearer $ACCESS" | node -pe 'JSON.parse(require("fs").readFileSync(0)).data[0].id')
+
+# 3) Crear una transacción
+curl -s -X POST $BASE/transactions -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
+  -d "{\"accountId\":\"$ACC\",\"categoryId\":\"$CAT\",\"amount\":25000,\"type\":\"EXPENSE\",\"merchant\":\"Café\",\"date\":\"2026-10-18\"}"
+
+# 4) Resumen de analítica
+curl -s "$BASE/analytics/summary" -H "Authorization: Bearer $ACCESS"
+```
+
+### 17.2 Códigos de error frecuentes
+
+| Código (`error.code`) | HTTP | Cuándo |
+|---|---|---|
+| `VALIDATION_ERROR` | 422 | Falla un esquema Zod |
+| `UNAUTHENTICATED` | 401 | Falta el `Bearer` o `req.user` |
+| `INVALID_TOKEN` | 401 | Access inválido/expirado |
+| `INVALID_REFRESH_TOKEN` | 401 | Refresh inválido/expirado/revocado |
+| `INVALID_CREDENTIALS` | 401 | Login incorrecto |
+| `EMAIL_TAKEN` | 409 | Registro con email existente |
+| `CATEGORY_EXISTS` | 409 | Nombre+tipo repetido |
+| `REMINDER_EXISTS` | 409 | Recordatorio duplicado |
+| `*_NOT_FOUND` | 404 | Recurso inexistente o ajeno |
+| `BUDGET_INVALID_CATEGORY` / `BILL_INVALID_CATEGORY` | 422 | Categoría no de gasto |
+| `POT_INSUFFICIENT_FUNDS` | 422 | Retiro mayor al saldo de la hucha |
+| `CSV_EMPTY` / `CSV_MISSING_COLUMNS` / `CSV_REQUIRED` | 400 | Problemas de import |
+| `UNSUPPORTED_FILE` / `UPLOAD_ERROR` | 415 / 400 | Subida inválida |
+| `RATE_LIMITED` | 429 | Límite de peticiones superado |
+| `NOT_FOUND` | 404 | Ruta desconocida |
+
+### 17.3 Preguntas frecuentes
+
+- **¿Por qué los recursos ajenos devuelven 404 y no 403?** Para no revelar la existencia de
+  recursos de otros usuarios (mitigación de enumeración).
+- **¿Transferir afecta el saldo?** Sí: `TRANSFER` resta saldo de la cuenta asociada, igual que
+  un gasto (modelo simplificado; no hay doble asiento).
+- **¿Las huchas descuentan de las cuentas?** No; son bolsillos independientes.
+- **¿Los recordatorios envían correos?** No; son *stubs* que registran en el log
+  (`channel: LOG`).
+- **¿Por qué `GET /categories` no filtra por tipo?** El filtrado por tipo se hace en el
+  cliente; el endpoint devuelve todas.
+- **¿Cómo se replican los datos demo?** `npm run seed` es determinista (misma semilla).
+
+---
+
+> Documento generado como referencia única del proyecto. Mantener actualizado al cambiar
+> contratos de API, esquema de datos, variables de entorno o el plan de seguridad.
