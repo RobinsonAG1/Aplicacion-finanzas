@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { buildQueryString } from './query'
 import type { BudgetPeriod } from './types'
 
 export interface BudgetCategory {
@@ -53,24 +54,14 @@ export interface BudgetInput {
   endDate?: string | null
 }
 
-function toQueryString(query: Record<string, string | undefined>): string {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === '') continue
-    params.set(key, value)
-  }
-  const qs = params.toString()
-  return qs ? `?${qs}` : ''
-}
-
 export const budgetsApi = {
   async list(period?: BudgetPeriod): Promise<Budget[]> {
-    const result = await apiRequest<{ data: Budget[] }>(`/budgets${toQueryString({ period })}`)
+    const result = await apiRequest<{ data: Budget[] }>(`/budgets${buildQueryString({ period })}`)
     return result.data
   },
   async overview(from?: string, to?: string): Promise<BudgetOverview> {
     const result = await apiRequest<{ data: BudgetOverview }>(
-      `/budgets/overview${toQueryString({ from, to })}`,
+      `/budgets/overview${buildQueryString({ from, to })}`,
     )
     return result.data
   },

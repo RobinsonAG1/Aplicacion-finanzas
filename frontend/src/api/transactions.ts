@@ -1,4 +1,5 @@
 import { apiDownload, apiRequest, apiUpload } from './client'
+import { buildQueryString } from './query'
 import type { Paginated, Transaction, TransactionType } from './types'
 
 export interface TransactionQuery {
@@ -44,19 +45,9 @@ export interface ImportSummary {
   errors: ImportRowError[]
 }
 
-function toQueryString(query: object): string {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
-    if (value === undefined || value === null || value === '') continue
-    params.set(key, String(value))
-  }
-  const qs = params.toString()
-  return qs ? `?${qs}` : ''
-}
-
 export const transactionsApi = {
   list(query: TransactionQuery) {
-    return apiRequest<Paginated<Transaction>>(`/transactions${toQueryString(query)}`)
+    return apiRequest<Paginated<Transaction>>(`/transactions${buildQueryString(query)}`)
   },
   async create(input: TransactionInput): Promise<Transaction> {
     const result = await apiRequest<{ data: Transaction }>('/transactions', {
@@ -84,12 +75,12 @@ export const transactionsApi = {
   },
   async suggestions(merchant: string): Promise<Suggestion[]> {
     const result = await apiRequest<{ suggestions: Suggestion[] }>(
-      `/transactions/suggestions${toQueryString({ merchant })}`,
+      `/transactions/suggestions${buildQueryString({ merchant })}`,
     )
     return result.suggestions
   },
   exportCsv(query: TransactionQuery) {
-    return apiDownload(`/transactions/export.csv${toQueryString(query)}`)
+    return apiDownload(`/transactions/export.csv${buildQueryString(query)}`)
   },
   async importCsv(file: File): Promise<ImportSummary> {
     const formData = new FormData()

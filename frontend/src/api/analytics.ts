@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { buildQueryString } from './query'
 
 export interface AnalyticsTotals {
   income: number
@@ -75,38 +76,28 @@ export interface TimelineResult {
   timeline: TimelinePoint[]
 }
 
-function toQueryString(query: Record<string, string | number | undefined>): string {
-  const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === '') continue
-    params.set(key, String(value))
-  }
-  const qs = params.toString()
-  return qs ? `?${qs}` : ''
-}
-
 export const analyticsApi = {
   async summary(from?: string, to?: string): Promise<SummaryResult> {
     const result = await apiRequest<{ data: SummaryResult }>(
-      `/analytics/summary${toQueryString({ from, to })}`,
+      `/analytics/summary${buildQueryString({ from, to })}`,
     )
     return result.data
   },
   async monthly(months?: number): Promise<MonthlyResult> {
     const result = await apiRequest<{ data: MonthlyResult }>(
-      `/analytics/monthly${toQueryString({ months })}`,
+      `/analytics/monthly${buildQueryString({ months })}`,
     )
     return result.data
   },
   async categoryTrends(months?: number): Promise<TrendsResult> {
     const result = await apiRequest<{ data: TrendsResult }>(
-      `/analytics/category-trends${toQueryString({ months })}`,
+      `/analytics/category-trends${buildQueryString({ months })}`,
     )
     return result.data
   },
   async balanceTimeline(from?: string, to?: string, limit?: number): Promise<TimelineResult> {
     const result = await apiRequest<{ data: TimelineResult }>(
-      `/analytics/balance-timeline${toQueryString({ from, to, limit })}`,
+      `/analytics/balance-timeline${buildQueryString({ from, to, limit })}`,
     )
     return result.data
   },
