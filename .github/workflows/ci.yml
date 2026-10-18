@@ -117,9 +117,10 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
         working-directory: frontend
 
-      # Version segura: trivy-action < 0.35.0 quedo comprometida (CVE-2026-33634).
+      # Tag correcto: tras el ataque de supply chain (CVE-2026-33634) los tags usan el
+      # prefijo "v" (v0.36.0). Se fija por SHA inmutable en lugar de por tag.
       - name: Trivy (dependencias y secretos)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .

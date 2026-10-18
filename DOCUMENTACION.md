@@ -867,7 +867,7 @@ paneles.
 - `docker-compose` publica PostgreSQL solo en `127.0.0.1`; el backend usa un rol de mínimo
   privilegio — punto 9.
 - nginx sobre `nginxinc/nginx-unprivileged` (no root) — punto 10.
-- `npm audit` + Trivy en CI (`trivy-action` fijado en `0.36.0`) — punto 10.
+- `npm audit` + Trivy en CI (`trivy-action` fijado por SHA, `v0.36.0`) — punto 10.
 
 **Fase C — Autenticación en el cliente**
 - Refresh token en cookie `HttpOnly` (`SameSite=Strict`, `Secure` en producción) y access solo
