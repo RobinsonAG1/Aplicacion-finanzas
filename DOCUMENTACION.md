@@ -874,8 +874,46 @@ paneles.
   en memoria, con verificación de `Origin` en los endpoints con cookie (CSRF) — punto 3.
 - Ajustados `client.ts`, `AuthProvider`, `tokenStore` y `types.ts`.
 
-> La Fase B no se pudo verificar con Docker en el entorno local (no disponible); queda pendiente
-> de una prueba real de `docker compose up --build`.
+#### Verificación de la Fase B sin Docker (entorno Windows)
+
+Docker no está disponible en el entorno local, así que B1/B2/B3 se validaron con las piezas
+nativas (PostgreSQL 18 y nginx), replicando la lógica de los archivos que usa compose.
+
+**B2 — rol de BD de mínimo privilegio** (`postgres/init/01-app-role.sh`). Se ejecutaron las
+mismas sentencias sobre un rol y una base desechables (`b2_app` / `b2_verify`) con `psql` y se
+comprobó el estado resultante:
+
+| Comprobación | Esperado | Obtenido |
+|---|---|---|
+| `rolsuper` / `rolcreatedb` / `rolcreaterole` | `f` / `f` / `f` | `f` / `f` / `f` |
+| `rolcanlogin` | `t` | `t` |
+| Propietario de la base | `b2_app` | `b2_app` |
+| Propietario del esquema `public` | `b2_app` | `b2_app` |
+
+Limpieza posterior (`DROP DATABASE` / `DROP ROLE`). **Observación**: el rol de desarrollo
+existente `finanzas` tiene `rolcreatedb = t` (se creó antes del script); con un volumen nuevo de
+compose el script lo crea como `NOCREATEDB`. Por eso, para reproducir el estado endurecido hay
+que recrear el volumen (`docker compose down -v`).
+
+**B1/B3 — cabeceras de seguridad y nginx** (`frontend/security-headers.conf`,
+`frontend/nginx.conf`). Se sirvió el build real (`frontend/dist`) con nginx nativo **1.27.5**
+(misma serie que la imagen `1.27-alpine`) usando un `server` idéntico al de producción. Resultado
+de `curl -I`:
+
+- `GET /` → `200` con las **6** cabeceras: `X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` y `Content-Security-Policy`.
+- `GET /assets/<hash>.js` → `200` con las mismas 6 cabeceras + `Cache-Control`.
+- Ruta SPA inexistente → `200` (fallback a `index.html`).
+
+**No verificable en Windows (caveats documentados):** nginx en Windows ignora la directiva
+`user` y no hay usuario Linux sin privilegios, así que el "non-root" (uid 101 en
+`nginx-unprivileged`) solo se confirma al 100 % en Linux; se omitió localmente `location /api/`
+porque el upstream `backend` solo resuelve dentro de compose. **Observación menor**: en
+`/assets/` nginx devuelve dos cabeceras `Cache-Control` (`max-age=2592000` de `expires 30d` +
+`public, immutable` de `add_header`), redundancia inofensiva que puede simplificarse.
+
+> Pendiente únicamente la prueba end-to-end con Docker (`docker compose up --build`) en Linux
+> para confirmar el "non-root" y el rol de BD dentro de contenedor.
 
 ---
 
