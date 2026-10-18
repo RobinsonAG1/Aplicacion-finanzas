@@ -9,6 +9,7 @@ import { RowActionsMenu } from '../components/RowActionsMenu'
 import { BillPayPanel } from '../features/bills/BillPayPanel'
 import { BillRemindersPanel } from '../features/bills/BillRemindersPanel'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { expenseCategories } from '../lib/categories'
 import { formatDate } from '../lib/dates'
 import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
@@ -48,7 +49,6 @@ export function BillsPage() {
   const loadCategories = useCallback(() => categoriesApi.list(), [])
   const { data: categories } = useAsyncData(loadCategories)
 
-  const expenseCategories = (categories ?? []).filter((category) => category.type === 'EXPENSE')
   const editing = Boolean(form.id)
 
   function resetForm(): void {
@@ -339,7 +339,7 @@ export function BillsPage() {
                 onChange={(event) => setForm({ ...form, categoryId: event.target.value })}
               >
                 <option value="">Sin categoría</option>
-                {expenseCategories.map((category) => (
+                {expenseCategories(categories ?? []).map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
                   </option>

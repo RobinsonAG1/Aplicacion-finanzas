@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { transactionsApi } from '../../api/transactions'
 import type { Suggestion, TransactionInput } from '../../api/transactions'
 import type { Account, Category, Transaction, TransactionType } from '../../api/types'
+import { categoriesByType } from '../../lib/categories'
 import { toDateInputValue } from '../../lib/dates'
 import { TRANSACTION_TYPE_LABELS } from '../../lib/labels'
 
@@ -52,8 +53,7 @@ export function TransactionForm({
     return () => clearTimeout(timer)
   }, [merchant])
 
-  const availableCategories =
-    type === 'TRANSFER' ? [] : categories.filter((category) => category.type === type)
+  const availableCategories = categoriesByType(categories, type)
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()

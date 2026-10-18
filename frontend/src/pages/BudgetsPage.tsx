@@ -7,6 +7,7 @@ import type { BudgetPeriod } from '../api/types'
 import { Drawer } from '../components/Drawer'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { expenseCategories } from '../lib/categories'
 import { endOfMonthInput, formatDate, startOfMonthInput, toDateInputValue } from '../lib/dates'
 import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
@@ -54,7 +55,6 @@ export function BudgetsPage() {
   const loadCategories = useCallback(() => categoriesApi.list(), [])
   const { data: categories } = useAsyncData(loadCategories)
 
-  const expenseCategories = (categories ?? []).filter((category) => category.type === 'EXPENSE')
   const summaries = overview?.budgets ?? []
   const editing = Boolean(form.id)
 
@@ -257,7 +257,7 @@ export function BudgetsPage() {
               required
             >
               <option value="">Selecciona…</option>
-              {expenseCategories.map((category) => (
+              {expenseCategories(categories ?? []).map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
                 </option>

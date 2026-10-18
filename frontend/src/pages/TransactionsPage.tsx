@@ -4,22 +4,18 @@ import { accountsApi } from '../api/accounts'
 import { categoriesApi } from '../api/categories'
 import { transactionsApi } from '../api/transactions'
 import type { ImportSummary, TransactionInput, TransactionQuery } from '../api/transactions'
-import type { Category, Transaction, TransactionType } from '../api/types'
+import type { Transaction, TransactionType } from '../api/types'
 import { Drawer } from '../components/Drawer'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import { TransactionForm } from '../features/transactions/TransactionForm'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { categoriesByType } from '../lib/categories'
 import { formatDate } from '../lib/dates'
 import { errorMessage } from '../lib/errors'
 import { formatSignedCOP } from '../lib/formatCOP'
 import { TRANSACTION_TYPE_LABELS } from '../lib/labels'
 
 const TRANSACTION_TYPES: TransactionType[] = ['EXPENSE', 'INCOME', 'TRANSFER']
-
-function categoriesFor(categories: Category[], type: TransactionType): Category[] {
-  if (type === 'TRANSFER') return []
-  return categories.filter((category) => category.type === type)
-}
 
 export function TransactionsPage() {
   const [page, setPage] = useState(1)
@@ -330,7 +326,7 @@ export function TransactionsPage() {
                           onChange={(event) => void handleCategorize(transaction, event.target.value)}
                         >
                           <option value="">Sin categoría</option>
-                          {categoriesFor(categories ?? [], transaction.type).map((category) => (
+                          {categoriesByType(categories ?? [], transaction.type).map((category) => (
                             <option key={category.id} value={category.id}>
                               {category.name}
                             </option>
