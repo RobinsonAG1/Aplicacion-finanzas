@@ -530,6 +530,11 @@ h3 {
   background: transparent;
   padding: 0.2rem 0.1rem;
   font-size: 0.85rem;
+  color: var(--text);
+}
+
+.category-cell select:hover {
+  color: var(--primary);
 }
 
 .amount-income {
@@ -738,6 +743,11 @@ input[type='color'] {
   padding: 0.55rem 0.7rem;
   color: var(--text);
   font-size: 0.95rem;
+}
+
+select option {
+  background: var(--surface);
+  color: var(--text);
 }
 
 input[type='color'] {
