@@ -353,6 +353,9 @@ export function TransactionsPage() {
                   </td>
                   <td className="cell-actions">
                     <RowActionsMenu
+                      label={`Acciones de ${
+                        transaction.merchant ?? transaction.description ?? 'la transacción'
+                      }`}
                       actions={[
                         { label: 'Editar', onSelect: () => openEdit(transaction) },
                         {

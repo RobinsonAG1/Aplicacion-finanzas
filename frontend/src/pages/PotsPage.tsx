@@ -164,10 +164,17 @@ export function PotsPage() {
                     : `Faltan ${formatCOP(pot.remaining)}`}
                 </span>
                 <span className="muted small">{pot.percentage.toFixed(1)}%</span>
-                <span className="actions">
+                <span className="row-actions">
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => startMovement(pot, 'deposit')}
+                  >
+                    Depositar
+                  </button>
                   <RowActionsMenu
+                    label={`Acciones de ${pot.name}`}
                     actions={[
-                      { label: 'Depositar', onSelect: () => startMovement(pot, 'deposit') },
                       { label: 'Retirar', onSelect: () => startMovement(pot, 'withdraw') },
                       { label: 'Editar', onSelect: () => startEdit(pot) },
                       {

@@ -215,8 +215,9 @@ export function BudgetsPage() {
                     : `Disponible ${formatCOP(summary.remaining)}`}
                 </span>
                 <span className="muted small">{summary.percentage.toFixed(1)}%</span>
-                <span className="actions">
+                <span className="row-actions">
                   <RowActionsMenu
+                    label={`Acciones de ${summary.category.name}`}
                     actions={[
                       { label: 'Editar', onSelect: () => startEdit(summary) },
                       {

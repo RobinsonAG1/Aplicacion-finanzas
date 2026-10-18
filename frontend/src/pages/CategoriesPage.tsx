@@ -125,6 +125,7 @@ export function CategoriesPage() {
                   <td>{CATEGORY_TYPE_LABELS[category.type]}</td>
                   <td className="cell-actions">
                     <RowActionsMenu
+                      label={`Acciones de ${category.name}`}
                       actions={[
                         { label: 'Editar', onSelect: () => startEdit(category) },
                         {

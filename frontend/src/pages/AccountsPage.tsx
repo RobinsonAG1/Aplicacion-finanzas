@@ -129,6 +129,7 @@ export function AccountsPage() {
                   <td className="right">{formatCOP(account.balance)}</td>
                   <td className="cell-actions">
                     <RowActionsMenu
+                      label={`Acciones de ${account.name}`}
                       actions={[
                         { label: 'Editar', onSelect: () => startEdit(account) },
                         {

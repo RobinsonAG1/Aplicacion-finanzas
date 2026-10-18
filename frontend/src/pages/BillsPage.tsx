@@ -255,22 +255,31 @@ export function BillsPage() {
                     )}
                   </td>
                   <td className="cell-actions">
-                    <RowActionsMenu
-                      actions={[
-                        { label: 'Pagar', onSelect: () => startPanel(bill, 'pay') },
-                        { label: 'Recordatorios', onSelect: () => startPanel(bill, 'reminders') },
-                        {
-                          label: bill.isActive ? 'Desactivar' : 'Activar',
-                          onSelect: () => void handleToggleActive(bill),
-                        },
-                        { label: 'Editar', onSelect: () => startEdit(bill) },
-                        {
-                          label: 'Eliminar',
-                          onSelect: () => void handleDelete(bill),
-                          danger: true,
-                        },
-                      ]}
-                    />
+                    <span className="row-actions">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() => startPanel(bill, 'pay')}
+                      >
+                        Pagar
+                      </button>
+                      <RowActionsMenu
+                        label={`Acciones de ${bill.name}`}
+                        actions={[
+                          { label: 'Recordatorios', onSelect: () => startPanel(bill, 'reminders') },
+                          {
+                            label: bill.isActive ? 'Desactivar' : 'Activar',
+                            onSelect: () => void handleToggleActive(bill),
+                          },
+                          { label: 'Editar', onSelect: () => startEdit(bill) },
+                          {
+                            label: 'Eliminar',
+                            onSelect: () => void handleDelete(bill),
+                            danger: true,
+                          },
+                        ]}
+                      />
+                    </span>
                   </td>
                 </tr>
               ))}

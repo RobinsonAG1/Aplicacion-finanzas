@@ -881,6 +881,12 @@ input[type='color'] {
   white-space: nowrap;
 }
 
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 /* Adaptabilidad ---------------------------------------------------------- */
 @media (max-width: 900px) {
   .charts {
