@@ -196,4 +196,39 @@ describe('Transacciones CSV', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('CSV_TOO_MANY_ROWS');
   });
+
+  it('no filtra datos de otros usuarios al exportar', async () => {
+    const userA = await createTestUser(app);
+    const userB = await createTestUser(app);
+    const accountA = await createAccount(app, userA, { name: 'Ahorros' });
+    await createTransaction(app, userA, {
+      accountId: accountA.id,
+      amount: 5000,
+      type: 'EXPENSE',
+      merchant: 'SecretoA',
+      date: '2026-10-05',
+    });
+
+    const res = await request(app).get('/api/transactions/export.csv').set(...authHeader(userB));
+    expect(res.status).toBe(200);
+    expect(res.text).not.toContain('SecretoA');
+  });
+
+  it('no importa hacia cuentas de otros usuarios', async () => {
+    const userA = await createTestUser(app);
+    const userB = await createTestUser(app);
+    const accountA = await createAccount(app, userA, { name: 'Ahorros', balance: 100000 });
+
+    const csv = HEADER + '2026-10-05,gasto,30000,Ahorros,,,Viaje\r\n';
+    const res = await request(app)
+      .post('/api/transactions/import')
+      .set(...authHeader(userB))
+      .set('Content-Type', 'text/csv')
+      .send(csv);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.imported).toBe(0);
+    expect(res.body.data.errors).toHaveLength(1);
+    expect(await getAccountBalance(app, userA, accountA.id as string)).toBe(100000);
+  });
 });
