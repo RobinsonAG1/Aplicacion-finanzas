@@ -4,6 +4,8 @@ import { budgetsApi } from '../api/budgets'
 import type { BudgetInput, BudgetSummary } from '../api/budgets'
 import { categoriesApi } from '../api/categories'
 import type { BudgetPeriod } from '../api/types'
+import { Drawer } from '../components/Drawer'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { endOfMonthInput, formatDate, startOfMonthInput, toDateInputValue } from '../lib/dates'
 import { formatCOP } from '../lib/formatCOP'
@@ -41,6 +43,7 @@ export function BudgetsPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const loadOverview = useCallback(
     () => budgetsApi.overview(`${from}T00:00:00.000`, `${to}T23:59:59.999`),
@@ -59,6 +62,16 @@ export function BudgetsPage() {
     setFormError(null)
   }
 
+  function openCreate(): void {
+    resetForm()
+    setDrawerOpen(true)
+  }
+
+  function closeDrawer(): void {
+    setDrawerOpen(false)
+    resetForm()
+  }
+
   function startEdit(summary: BudgetSummary): void {
     setForm({
       id: summary.id,
@@ -69,6 +82,7 @@ export function BudgetsPage() {
       endDate: summary.endDate ? toDateInputValue(summary.endDate) : '',
     })
     setFormError(null)
+    setDrawerOpen(true)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -88,7 +102,7 @@ export function BudgetsPage() {
       } else {
         await budgetsApi.create(payload)
       }
-      resetForm()
+      closeDrawer()
       await reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar el presupuesto')
@@ -102,7 +116,10 @@ export function BudgetsPage() {
     setActionError(null)
     try {
       await budgetsApi.remove(summary.id)
-      if (form.id === summary.id) resetForm()
+      if (form.id === summary.id) {
+        resetForm()
+        setDrawerOpen(false)
+      }
       await reload()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo eliminar el presupuesto')
@@ -111,8 +128,15 @@ export function BudgetsPage() {
 
   return (
     <section className="page">
-      <h1>Presupuestos</h1>
-      <p className="muted">Define límites de gasto por categoría y sigue su avance.</p>
+      <div className="page-head">
+        <div>
+          <h1>Presupuestos</h1>
+          <p className="muted">Define límites de gasto por categoría y sigue su avance.</p>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={openCreate}>
+          Nuevo presupuesto
+        </button>
+      </div>
 
       <div className="filters panel">
         <label className="field inline-field">
@@ -156,69 +180,69 @@ export function BudgetsPage() {
         </div>
       </div>
 
-      <div className="split">
-        <div className="panel">
-          {loading && <p className="muted">Cargando…</p>}
-          {error && <p className="alert">{error}</p>}
-          {!loading && !error && summaries.length === 0 && (
-            <p className="muted">No hay presupuestos para el periodo seleccionado.</p>
-          )}
-          <div className="budget-list">
-            {summaries.map((summary) => (
-              <article key={summary.id} className="budget-card">
-                <div className="budget-head">
-                  <span className="budget-cat">
-                    <span
-                      className="color-dot"
-                      style={{ backgroundColor: summary.category.color }}
-                    />
-                    {summary.category.name}
-                    <span className="badge">{BUDGET_PERIOD_LABELS[summary.period]}</span>
-                  </span>
-                  <span className="budget-amounts">
-                    {formatCOP(summary.spent)} / {formatCOP(summary.limitAmount)}
-                  </span>
-                </div>
-                <div className="progress">
-                  <div
-                    className={progressClass(summary)}
-                    style={{ width: `${Math.min(100, summary.percentage)}%` }}
+      <div className="panel panel-standalone">
+        {loading && <p className="muted">Cargando…</p>}
+        {error && <p className="alert">{error}</p>}
+        {!loading && !error && summaries.length === 0 && (
+          <p className="muted">No hay presupuestos para el periodo seleccionado.</p>
+        )}
+        <div className="budget-list">
+          {summaries.map((summary) => (
+            <article key={summary.id} className="budget-card">
+              <div className="budget-head">
+                <span className="budget-cat">
+                  <span
+                    className="color-dot"
+                    style={{ backgroundColor: summary.category.color }}
                   />
-                </div>
-                <div className="budget-foot">
-                  <span className={`small ${summary.exceeded ? 'amount-expense' : 'muted'}`}>
-                    {summary.exceeded
-                      ? `Excedido en ${formatCOP(Math.abs(summary.remaining))}`
-                      : `Disponible ${formatCOP(summary.remaining)}`}
-                  </span>
-                  <span className="muted small">{summary.percentage.toFixed(1)}%</span>
-                  <span className="actions">
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => startEdit(summary)}
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger"
-                      onClick={() => void handleDelete(summary)}
-                    >
-                      Eliminar
-                    </button>
-                  </span>
-                </div>
-              </article>
-            ))}
-          </div>
-          {overview && (
-            <p className="muted small">
-              Periodo: {formatDate(overview.from)} — {formatDate(overview.to)}
-            </p>
-          )}
+                  {summary.category.name}
+                  <span className="badge">{BUDGET_PERIOD_LABELS[summary.period]}</span>
+                </span>
+                <span className="budget-amounts">
+                  {formatCOP(summary.spent)} / {formatCOP(summary.limitAmount)}
+                </span>
+              </div>
+              <div className="progress">
+                <div
+                  className={progressClass(summary)}
+                  style={{ width: `${Math.min(100, summary.percentage)}%` }}
+                />
+              </div>
+              <div className="budget-foot">
+                <span className={`small ${summary.exceeded ? 'amount-expense' : 'muted'}`}>
+                  {summary.exceeded
+                    ? `Excedido en ${formatCOP(Math.abs(summary.remaining))}`
+                    : `Disponible ${formatCOP(summary.remaining)}`}
+                </span>
+                <span className="muted small">{summary.percentage.toFixed(1)}%</span>
+                <span className="actions">
+                  <RowActionsMenu
+                    actions={[
+                      { label: 'Editar', onSelect: () => startEdit(summary) },
+                      {
+                        label: 'Eliminar',
+                        onSelect: () => void handleDelete(summary),
+                        danger: true,
+                      },
+                    ]}
+                  />
+                </span>
+              </div>
+            </article>
+          ))}
         </div>
+        {overview && (
+          <p className="muted small">
+            Periodo: {formatDate(overview.from)} — {formatDate(overview.to)}
+          </p>
+        )}
+      </div>
 
+      <Drawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        label={editing ? 'Editar presupuesto' : 'Nuevo presupuesto'}
+      >
         <form className="panel form-panel" onSubmit={handleSubmit}>
           <h2>{editing ? 'Editar presupuesto' : 'Nuevo presupuesto'}</h2>
           {formError && <p className="alert">{formError}</p>}
@@ -288,14 +312,12 @@ export function BudgetsPage() {
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear presupuesto'}
             </button>
-            {editing && (
-              <button type="button" className="btn" onClick={resetForm}>
-                Cancelar
-              </button>
-            )}
+            <button type="button" className="btn" onClick={closeDrawer}>
+              Cancelar
+            </button>
           </div>
         </form>
-      </div>
+      </Drawer>
     </section>
   )
 }

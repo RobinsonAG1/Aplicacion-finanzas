@@ -77,7 +77,8 @@ describe('PotsPage', () => {
     render(<PotsPage />)
     await screen.findByText('Vacaciones')
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Depositar' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Más acciones' })[0])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Depositar' }))
 
     expect(await screen.findByText('Mover en Vacaciones')).toBeInTheDocument()
     expect(await screen.findByText('Ahorro inicial')).toBeInTheDocument()

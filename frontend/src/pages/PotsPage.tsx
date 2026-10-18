@@ -2,6 +2,8 @@ import { useCallback, useState } from 'react'
 import type { FormEvent } from 'react'
 import { potsApi } from '../api/pots'
 import type { Pot, PotInput } from '../api/pots'
+import { Drawer } from '../components/Drawer'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import { PotMovePanel } from '../features/pots/PotMovePanel'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatCOP } from '../lib/formatCOP'
@@ -28,12 +30,26 @@ export function PotsPage() {
   const [mode, setMode] = useState<PanelMode>('form')
   const [selectedPot, setSelectedPot] = useState<Pot | null>(null)
   const [moveType, setMoveType] = useState<'deposit' | 'withdraw'>('deposit')
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const editing = Boolean(form.id)
 
   function resetForm(): void {
     setForm(EMPTY_FORM)
     setFormError(null)
+  }
+
+  function openCreate(): void {
+    resetForm()
+    setMode('form')
+    setDrawerOpen(true)
+  }
+
+  function closeDrawer(): void {
+    setDrawerOpen(false)
+    setMode('form')
+    setSelectedPot(null)
+    resetForm()
   }
 
   function startEdit(pot: Pot): void {
@@ -45,12 +61,14 @@ export function PotsPage() {
     })
     setFormError(null)
     setMode('form')
+    setDrawerOpen(true)
   }
 
   function startMovement(pot: Pot, type: 'deposit' | 'withdraw'): void {
     setSelectedPot(pot)
     setMoveType(type)
     setMode('move')
+    setDrawerOpen(true)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -68,7 +86,7 @@ export function PotsPage() {
       } else {
         await potsApi.create(payload)
       }
-      resetForm()
+      closeDrawer()
       await reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar la hucha')
@@ -83,88 +101,90 @@ export function PotsPage() {
     try {
       await potsApi.remove(pot.id)
       if (form.id === pot.id) resetForm()
-      if (selectedPot?.id === pot.id) setMode('form')
+      if (selectedPot?.id === pot.id) closeDrawer()
       await reload()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo eliminar la hucha')
     }
   }
 
+  const drawerLabel =
+    mode === 'move' && selectedPot
+      ? `Mover en ${selectedPot.name}`
+      : editing
+        ? 'Editar hucha'
+        : 'Nueva hucha'
+
   return (
     <section className="page">
-      <h1>Huchas de ahorro</h1>
-      <p className="muted">Aparta dinero hacia metas y sigue tu progreso.</p>
+      <div className="page-head">
+        <div>
+          <h1>Huchas de ahorro</h1>
+          <p className="muted">Aparta dinero hacia metas y sigue tu progreso.</p>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={openCreate}>
+          Nueva hucha
+        </button>
+      </div>
 
       {actionError && <p className="alert">{actionError}</p>}
 
-      <div className="split">
-        <div className="panel">
-          {loading && <p className="muted">Cargando…</p>}
-          {error && <p className="alert">{error}</p>}
-          {!loading && !error && (pots ?? []).length === 0 && (
-            <p className="muted">Aún no tienes huchas. Crea la primera.</p>
-          )}
-          <div className="budget-list">
-            {(pots ?? []).map((pot) => (
-              <article key={pot.id} className="budget-card">
-                <div className="budget-head">
-                  <span className="budget-cat">
-                    <span className="color-dot" style={{ backgroundColor: pot.color }} />
-                    {pot.name}
-                    {pot.completed && <span className="badge">Meta alcanzada</span>}
-                  </span>
-                  <span className="budget-amounts">
-                    {formatCOP(pot.currentAmount)} / {formatCOP(pot.targetAmount)}
-                  </span>
-                </div>
-                <div className="progress">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${Math.min(100, pot.percentage)}%`,
-                      backgroundColor: pot.color,
-                    }}
+      <div className="panel panel-standalone">
+        {loading && <p className="muted">Cargando…</p>}
+        {error && <p className="alert">{error}</p>}
+        {!loading && !error && (pots ?? []).length === 0 && (
+          <p className="muted">Aún no tienes huchas. Crea la primera.</p>
+        )}
+        <div className="budget-list">
+          {(pots ?? []).map((pot) => (
+            <article key={pot.id} className="budget-card">
+              <div className="budget-head">
+                <span className="budget-cat">
+                  <span className="color-dot" style={{ backgroundColor: pot.color }} />
+                  {pot.name}
+                  {pot.completed && <span className="badge">Meta alcanzada</span>}
+                </span>
+                <span className="budget-amounts">
+                  {formatCOP(pot.currentAmount)} / {formatCOP(pot.targetAmount)}
+                </span>
+              </div>
+              <div className="progress">
+                <div
+                  className="progress-fill"
+                  style={{
+                    width: `${Math.min(100, pot.percentage)}%`,
+                    backgroundColor: pot.color,
+                  }}
+                />
+              </div>
+              <div className="budget-foot">
+                <span className="muted small">
+                  {pot.completed
+                    ? `Superada por ${formatCOP(Math.abs(pot.remaining))}`
+                    : `Faltan ${formatCOP(pot.remaining)}`}
+                </span>
+                <span className="muted small">{pot.percentage.toFixed(1)}%</span>
+                <span className="actions">
+                  <RowActionsMenu
+                    actions={[
+                      { label: 'Depositar', onSelect: () => startMovement(pot, 'deposit') },
+                      { label: 'Retirar', onSelect: () => startMovement(pot, 'withdraw') },
+                      { label: 'Editar', onSelect: () => startEdit(pot) },
+                      {
+                        label: 'Eliminar',
+                        onSelect: () => void handleDelete(pot),
+                        danger: true,
+                      },
+                    ]}
                   />
-                </div>
-                <div className="budget-foot">
-                  <span className="muted small">
-                    {pot.completed
-                      ? `Superada por ${formatCOP(Math.abs(pot.remaining))}`
-                      : `Faltan ${formatCOP(pot.remaining)}`}
-                  </span>
-                  <span className="muted small">{pot.percentage.toFixed(1)}%</span>
-                  <span className="actions">
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => startMovement(pot, 'deposit')}
-                    >
-                      Depositar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => startMovement(pot, 'withdraw')}
-                    >
-                      Retirar
-                    </button>
-                    <button type="button" className="btn btn-sm" onClick={() => startEdit(pot)}>
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-danger"
-                      onClick={() => void handleDelete(pot)}
-                    >
-                      Eliminar
-                    </button>
-                  </span>
-                </div>
-              </article>
-            ))}
-          </div>
+                </span>
+              </div>
+            </article>
+          ))}
         </div>
+      </div>
 
+      <Drawer open={drawerOpen} onClose={closeDrawer} label={drawerLabel}>
         {mode === 'move' && selectedPot ? (
           <PotMovePanel
             key={selectedPot.id + moveType}
@@ -173,7 +193,7 @@ export function PotsPage() {
             onChanged={async () => {
               await reload()
             }}
-            onClose={() => setMode('form')}
+            onClose={closeDrawer}
           />
         ) : (
           <form className="panel form-panel" onSubmit={handleSubmit}>
@@ -214,15 +234,13 @@ export function PotsPage() {
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear hucha'}
               </button>
-              {editing && (
-                <button type="button" className="btn" onClick={resetForm}>
-                  Cancelar
-                </button>
-              )}
+              <button type="button" className="btn" onClick={closeDrawer}>
+                Cancelar
+              </button>
             </div>
           </form>
         )}
-      </div>
+      </Drawer>
     </section>
   )
 }
