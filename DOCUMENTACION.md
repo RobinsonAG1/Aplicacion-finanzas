@@ -60,7 +60,7 @@ HTTP**:
 | Empaquetado | Dockerfiles (backend + nginx), `docker-compose.yml`, entrypoint con migraciones |
 | CI | GitHub Actions: lint, tipos, tests y build de backend y frontend |
 
-**Estado actual**: backend con **81 pruebas** de integración; frontend con **50 pruebas**
+**Estado actual**: backend con **87 pruebas** de integración; frontend con **50 pruebas**
 (Vitest + Testing Library). CI configurada con `npm audit` y Trivy. Auditoría de seguridad
 completada: plan de endurecimiento A/B/C aplicado (ver [sección 10](#10-seguridad)).
 
@@ -894,6 +894,7 @@ paneles.
 | `JWT_REFRESH_SECRET` | **Sí** | — | ≥ 32 caracteres, distinto del anterior |
 | `JWT_ACCESS_TTL` | No | `900` | TTL access en segundos |
 | `JWT_REFRESH_TTL` | No | `604800` | TTL refresh en segundos (7 días) |
+| `SEED_FORCE` | No | — | Solo seed: `true` fuerza el seed en producción |
 
 `env.ts` valida con Zod y **aborta el arranque** si algo falta o es inválido.
 
