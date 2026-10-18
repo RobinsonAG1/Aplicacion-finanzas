@@ -9,6 +9,14 @@ export interface TestUser {
   refreshToken: string;
 }
 
+// Extrae la cookie de refresh (formato "refresh_token=...; Path=...") de una respuesta.
+export function extractRefreshCookie(res: { headers: Record<string, unknown> }): string {
+  const raw = res.headers['set-cookie'];
+  const cookies = Array.isArray(raw) ? (raw as string[]) : raw ? [raw as string] : [];
+  const found = cookies.find((cookie) => cookie.startsWith('refresh_token='));
+  return found ? found.split(';')[0] : '';
+}
+
 export async function createTestUser(app: Express): Promise<TestUser> {
   const email = `user_${randomUUID()}@finanzas.test`;
   const res = await request(app)
@@ -23,7 +31,7 @@ export async function createTestUser(app: Express): Promise<TestUser> {
     id: res.body.user.id as string,
     email,
     accessToken: res.body.accessToken as string,
-    refreshToken: res.body.refreshToken as string,
+    refreshToken: extractRefreshCookie(res),
   };
 }
 

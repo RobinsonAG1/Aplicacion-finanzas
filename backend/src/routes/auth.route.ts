@@ -4,8 +4,9 @@ import { rateLimit } from 'express-rate-limit';
 import { authController } from '../controllers/auth.controller.js';
 import { validate } from '../middlewares/validate.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
-import { loginBody, refreshBody, registerBody } from '../schemas/auth.schema.js';
+import { loginBody, registerBody } from '../schemas/auth.schema.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { csrfProtection } from '../middlewares/csrf.js';
 import { env } from '../config/env.js';
 
 export const authRouter = Router();
@@ -41,11 +42,6 @@ authRouter.post(
   validate({ body: loginBody }),
   asyncHandler(authController.login),
 );
-authRouter.post(
-  '/refresh',
-  refreshLimiter,
-  validate({ body: refreshBody }),
-  asyncHandler(authController.refresh),
-);
-authRouter.post('/logout', validate({ body: refreshBody }), asyncHandler(authController.logout));
+authRouter.post('/refresh', refreshLimiter, csrfProtection, asyncHandler(authController.refresh));
+authRouter.post('/logout', csrfProtection, asyncHandler(authController.logout));
 authRouter.get('/me', authenticate, asyncHandler(authController.me));

@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { closeDatabase, resetDatabase } from './helpers/db.js';
+import { extractRefreshCookie } from './helpers/auth.js';
 
 const app = createApp();
 
@@ -13,6 +14,11 @@ const credentials = {
 
 async function register() {
   return request(app).post('/api/auth/register').send(credentials);
+}
+
+function cookiesOf(res: { headers: Record<string, unknown> }): string {
+  const raw = res.headers['set-cookie'];
+  return Array.isArray(raw) ? raw.join('; ') : String(raw ?? '');
 }
 
 describe('Autenticacion', () => {
@@ -30,8 +36,13 @@ describe('Autenticacion', () => {
     expect(res.body.user.email).toBe(credentials.email);
     expect(res.body.user.name).toBe(credentials.name);
     expect(res.body.accessToken).toBeTypeOf('string');
-    expect(res.body.refreshToken).toBeTypeOf('string');
     expect(res.body.user.passwordHash).toBeUndefined();
+    // El refresh token va en cookie HttpOnly, nunca en el cuerpo.
+    expect(res.body.refreshToken).toBeUndefined();
+    const cookies = cookiesOf(res);
+    expect(cookies).toContain('refresh_token=');
+    expect(cookies).toContain('HttpOnly');
+    expect(cookies).toContain('SameSite=Strict');
   });
 
   it('rechaza un email ya registrado con 409', async () => {
@@ -56,6 +67,8 @@ describe('Autenticacion', () => {
       .send({ email: credentials.email, password: credentials.password });
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBeTypeOf('string');
+    expect(res.body.refreshToken).toBeUndefined();
+    expect(extractRefreshCookie(res)).toContain('refresh_token=');
   });
 
   it('rechaza credenciales incorrectas con 401', async () => {
@@ -81,44 +94,63 @@ describe('Autenticacion', () => {
     expect(authorized.body.user.email).toBe(credentials.email);
   });
 
-  it('rota el refresh token y rechaza su reutilizacion', async () => {
+  it('rota el refresh token (cookie) y rechaza su reutilizacion', async () => {
     const reg = await register();
-    const refreshToken = reg.body.refreshToken as string;
-    expect(refreshToken).toBeTypeOf('string');
+    const firstCookie = extractRefreshCookie(reg);
+    expect(firstCookie).toContain('refresh_token=');
 
-    const refreshed = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    const refreshed = await request(app).post('/api/auth/refresh').set('Cookie', firstCookie);
     expect(refreshed.status).toBe(200);
-    expect(refreshed.body.refreshToken).not.toBe(refreshToken);
+    expect(refreshed.body.accessToken).toBeTypeOf('string');
+    const secondCookie = extractRefreshCookie(refreshed);
+    expect(secondCookie).not.toBe(firstCookie);
 
-    const reuse = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    const reuse = await request(app).post('/api/auth/refresh').set('Cookie', firstCookie);
     expect(reuse.status).toBe(401);
   });
 
   it('revoca toda la familia al detectar reuso de un refresh rotado', async () => {
     const reg = await register();
-    const first = reg.body.refreshToken as string;
+    const firstCookie = extractRefreshCookie(reg);
 
-    const rotated = await request(app).post('/api/auth/refresh').send({ refreshToken: first });
+    const rotated = await request(app).post('/api/auth/refresh').set('Cookie', firstCookie);
     expect(rotated.status).toBe(200);
-    const second = rotated.body.refreshToken as string;
-    expect(second).not.toBe(first);
+    const secondCookie = extractRefreshCookie(rotated);
+    expect(secondCookie).not.toBe(firstCookie);
 
-    const reuse = await request(app).post('/api/auth/refresh').send({ refreshToken: first });
+    const reuse = await request(app).post('/api/auth/refresh').set('Cookie', firstCookie);
     expect(reuse.status).toBe(401);
 
-    const afterReuse = await request(app).post('/api/auth/refresh').send({ refreshToken: second });
+    const afterReuse = await request(app).post('/api/auth/refresh').set('Cookie', secondCookie);
     expect(afterReuse.status).toBe(401);
   });
 
   it('cierra sesion y luego el refresh deja de funcionar', async () => {
     const reg = await register();
-    const refreshToken = reg.body.refreshToken as string;
+    const cookie = extractRefreshCookie(reg);
 
-    const logout = await request(app).post('/api/auth/logout').send({ refreshToken });
+    const logout = await request(app).post('/api/auth/logout').set('Cookie', cookie);
     expect(logout.status).toBe(200);
 
-    const afterLogout = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    const afterLogout = await request(app).post('/api/auth/refresh').set('Cookie', cookie);
     expect(afterLogout.status).toBe(401);
+  });
+
+  it('rechaza el refresh cuando no hay cookie', async () => {
+    const res = await request(app).post('/api/auth/refresh');
+    expect(res.status).toBe(401);
+  });
+
+  it('rechaza el refresh con un Origin no permitido (CSRF)', async () => {
+    const reg = await register();
+    const cookie = extractRefreshCookie(reg);
+
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', cookie)
+      .set('Origin', 'https://sitio-malicioso.example');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('CSRF_ORIGIN_MISMATCH');
   });
 
   it('rechaza un token de acceso invalido con 401', async () => {

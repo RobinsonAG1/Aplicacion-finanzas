@@ -11,10 +11,5 @@ export const loginBody = z.object({
   password: z.string().min(1, 'La contrasena es obligatoria'),
 });
 
-export const refreshBody = z.object({
-  refreshToken: z.string().min(1, 'Refresh token obligatorio'),
-});
-
 export type RegisterInput = z.infer<typeof registerBody>;
 export type LoginInput = z.infer<typeof loginBody>;
-export type RefreshInput = z.infer<typeof refreshBody>;
