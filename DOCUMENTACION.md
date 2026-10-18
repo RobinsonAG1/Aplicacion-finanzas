@@ -60,9 +60,9 @@ HTTP**:
 | Empaquetado | Dockerfiles (backend + nginx), `docker-compose.yml`, entrypoint con migraciones |
 | CI | GitHub Actions: lint, tipos, tests y build de backend y frontend |
 
-**Estado actual**: backend con **71 pruebas** de integración; frontend con **50 pruebas**
-(Vitest + Testing Library). CI configurada. Auditoría de seguridad realizada con un plan
-de endurecimiento pendiente (ver [sección 10](#10-seguridad)).
+**Estado actual**: backend con **81 pruebas** de integración; frontend con **50 pruebas**
+(Vitest + Testing Library). CI configurada con `npm audit` y Trivy. Auditoría de seguridad
+completada: plan de endurecimiento A/B/C aplicado (ver [sección 10](#10-seguridad)).
 
 ---
 
@@ -163,7 +163,7 @@ flowchart TD
   PG --> H["hooks/useAsyncData"]
   F --> API["api/*.ts<br/>client.ts (fetch + refresh)"]
   H --> API
-  API --> LS["lib/tokens.ts (localStorage)"]
+  API --> LS["lib/tokens.ts (access en memoria)"]
   API --> ENV["lib/env.ts (VITE_API_URL)"]
 ```
 
@@ -191,7 +191,7 @@ sequenceDiagram
   C-->>P: datos parseados
   P-->>U: UI actualizada
 
-  Note over C,A: Si el access expira (401),<br/>client.ts hace refresh una sola vez<br/>(refreshInFlight dedupe) y reintenta.
+  Note over C,A: Si el access expira (401),<br/>client.ts hace refresh una sola vez<br/>(refreshInFlight dedupe) usando la cookie<br/>HttpOnly y reintenta.
 ```
 
 ---
@@ -369,8 +369,8 @@ erDiagram
 | GET | `/api/health` | No | Estado del servicio |
 | POST | `/api/auth/register` | No | Crear cuenta de usuario |
 | POST | `/api/auth/login` | No | Iniciar sesión |
-| POST | `/api/auth/refresh` | No | Rotar tokens |
-| POST | `/api/auth/logout` | No | Revocar refresh token |
+| POST | `/api/auth/refresh` | Cookie | Rotar credenciales (refresh en cookie HttpOnly) |
+| POST | `/api/auth/logout` | Cookie | Revocar refresh token y borrar cookie |
 | GET | `/api/auth/me` | Sí | Usuario actual |
 | GET/POST | `/api/accounts` | Sí | Listar / crear cuentas |
 | GET/PUT/DELETE | `/api/accounts/:id` | Sí | Detalle / editar / borrar |
@@ -418,15 +418,16 @@ curl -X POST http://localhost:4000/api/auth/register \
 ```
 
 Campos: `name` (2–80), `email` (email válido, se normaliza a minúsculas), `password` (8–128).
-Respuesta `201`:
+Respuesta `201` (el **refresh token** viaja en una cookie `refresh_token` `HttpOnly`; nunca en el cuerpo):
 
 ```json
 {
   "user": { "id": "cuid", "email": "ana@ejemplo.com", "name": "Ana", "createdAt": "..." },
-  "accessToken": "eyJ…",
-  "refreshToken": "eyJ…"
+  "accessToken": "eyJ…"
 }
 ```
+
+Cookie emitida: `refresh_token=…; Path=/api/auth; HttpOnly; SameSite=Strict` (`Secure` en producción).
 
 **Login** — `POST /api/auth/login`
 
@@ -438,15 +439,15 @@ curl -X POST http://localhost:4000/api/auth/login \
 
 Credenciales inválidas → `401 { "error": { "code": "INVALID_CREDENTIALS" } }`.
 
-**Refresh** — `POST /api/auth/refresh` (rota el refresh: el anterior queda revocado)
+**Refresh** — `POST /api/auth/refresh` (rota el refresh: el anterior queda revocado). Se autentica
+con la cookie `refresh_token` (no lleva cuerpo); requiere coincidencia de `Origin` (defensa CSRF).
 
 ```bash
 curl -X POST http://localhost:4000/api/auth/refresh \
-  -H "Content-Type: application/json" \
-  -d '{"refreshToken":"eyJ…"}'
+  -H "Cookie: refresh_token=eyJ…"
 ```
 
-**Logout** — `POST /api/auth/logout` → `{ "success": true }`
+**Logout** — `POST /api/auth/logout` (revoca el refresh y borra la cookie) → `{ "success": true }`
 
 **Me** — `GET /api/auth/me`
 
@@ -765,8 +766,9 @@ El code-splitting usa `React.lazy(() => import(...).then(m => ({ default: m.X })
 - `authFetch` añade `Authorization: Bearer` y, ante `401`, intenta **un** refresh y reintenta
   (deduplicado con `refreshInFlight`).
 - `ApiError` lleva `status`, `code` y `details`.
-- `tokenStore` (`lib/tokens.ts`) persiste tokens en `localStorage` (a migrar a cookies
-  HttpOnly en la fase C de seguridad).
+- `tokenStore` (`lib/tokens.ts`) guarda el **access token solo en memoria**; el **refresh token**
+  vive en una cookie `HttpOnly`, por lo que la SPA ya no persiste credenciales en `localStorage`.
+  Todas las peticiones usan `credentials: 'include'`.
 
 ### 9.3 Estado: `useAsyncData`
 
@@ -837,43 +839,43 @@ paneles.
 | # | Punto | Estado | Detalle |
 |---|---|---|---|
 | 1 | Inyección SQL en SQL raw | OK | Uso de template tags parametrizados en `analytics.repository.ts` |
-| 2 | IDOR / control de propiedad | OK (con huecos de test) | `findOwned` en todos los repos; faltan tests de create/update con refs ajenas y de export/import |
-| 3 | Almacenamiento de tokens | Pendiente | Access y refresh en `localStorage`; refresh enviado en el body |
-| 4 | Reuso de refresh tokens | Parcial | Hay rotación y revoca en logout, pero **no** se detecta reuso para revocar la familia (`revokeAllForUser` existe y no se usa) |
-| 5 | Rate limiting | Parcial | Global 300/15 min + router de auth 50/15 min (compartido); conviene por endpoint |
-| 6 | Cabeceras de seguridad | Parcial | `helmet()` en Express OK; nginx sin CSP/HSTS/`X-Frame-Options` |
-| 7 | CSV (inyección / límites) | Parcial | Import con allowlist OK; export sin saneo anti fórmula y sin tope de filas/campos |
-| 8 | Seed en producción | Pendiente | `prisma/seed.ts` ejecuta `deleteMany` sin guardián de entorno |
-| 9 | Exposición de PostgreSQL | Pendiente | `docker-compose.yml` publica `5432:5432`; usuario por defecto es superusuario |
-| 10 | Superficie de imagen / dependencias | Parcial | Backend `USER node` OK; nginx corre como root; falta `npm audit`/Trivy en CI |
-| 11 | Fuga de datos en logs | Pendiente | `logger.ts` sin `redact`; `pino-http` serializa cabeceras (incl. `Authorization`) |
+| 2 | IDOR / control de propiedad | OK | `findOwned` en todos los repos + tests de IDOR en create/update y export/import |
+| 3 | Almacenamiento de tokens | OK | Refresh en cookie `HttpOnly` `SameSite=Strict`; access solo en memoria; endpoints con cookie verifican `Origin` (CSRF) |
+| 4 | Reuso de refresh tokens | OK | Rotación + detección de reuso que revoca toda la familia (`revokeAllForUser`) |
+| 5 | Rate limiting | OK | Global 300/15 min + límite por endpoint de auth (login 10, register 20, refresh 60) |
+| 6 | Cabeceras de seguridad | OK | `helmet()` en Express + CSP/HSTS/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` en nginx |
+| 7 | CSV (inyección / límites) | OK | Allowlist en import; saneo anti fórmula en export; tope de 5000 filas y 2000 caracteres por campo |
+| 8 | Seed en producción | OK | `seed.ts` aborta si `NODE_ENV=production` salvo `SEED_FORCE=true` |
+| 9 | Exposición de PostgreSQL | OK | Puerto solo en loopback `127.0.0.1`; el backend usa un rol sin superusuario (`postgres/init/01-app-role.sh`) |
+| 10 | Superficie de imagen / dependencias | OK | Backend `USER node`; nginx con `nginxinc/nginx-unprivileged` (no root); `npm audit` + Trivy en CI |
+| 11 | Fuga de datos en logs | OK | pino `redact` de `Authorization`, cookies y campos sensibles |
 
-### 10.3 Plan de endurecimiento (A → B → C)
+### 10.3 Plan de endurecimiento aplicado (A → B → C)
 
-**Fase A — Backend, sin romper contratos**
-- Añadir `redact` en pino (cabeceras de autorización y cookies) — punto 11.
-- Guardián de entorno en `seed.ts` (abortar en producción) — punto 8.
-- Detección de reuso de refresh → `revokeAllForUser` + revocación en cascada — punto 4.
-- Saneo anti CSV-injection en export (`=`, `+`, `-`, `@`) y topes en import — punto 7.
+> Plan **ejecutado por completo**. Cada tarea quedó en un commit propio (`git log --oneline`).
+
+**Fase A — Backend (sin romper contratos)**
+- `redact` en pino para cabeceras de autorización, cookies y campos sensibles — punto 11.
+- Guardián de entorno en `seed.ts` (`SEED_FORCE=true` para forzar) — punto 8.
+- Detección de reuso de refresh → `revokeAllForUser` (revoca toda la familia) — punto 4.
+- Saneo anti CSV-injection en export y topes de import (5000 filas / 2000 caracteres) — punto 7.
 - Rate limit específico por endpoint de auth — punto 5.
 - Tests de IDOR en create/update y export/import — punto 2.
 
 **Fase B — Infraestructura y empaquetado**
-- Cabeceras de seguridad en nginx (CSP, HSTS, `X-Frame-Options`, etc.) — punto 6.
-- `docker-compose` sin publicar `5432` al host en producción; usuario/rol de BD de mínimo
+- Cabeceras de seguridad en nginx (`frontend/security-headers.conf`) — punto 6.
+- `docker-compose` publica PostgreSQL solo en `127.0.0.1`; el backend usa un rol de mínimo
   privilegio — punto 9.
-- nginx como usuario no root — punto 10.
-- `npm audit` (y/o Trivy) en CI — punto 10.
+- nginx sobre `nginxinc/nginx-unprivileged` (no root) — punto 10.
+- `npm audit` + Trivy en CI (`trivy-action` fijado en `0.36.0`) — punto 10.
 
 **Fase C — Autenticación en el cliente**
-- Migrar tokens a **cookies HttpOnly** (`Secure`, `SameSite`) con access en memoria y
-  protección CSRF — punto 3 (mismo coste de servidor: el refresh ya hace lookup + firma +
-  insert; no incrementa carga del VPS).
-- Ajustar `client.ts`, `AuthProvider` y CORS (`credentials: true`).
+- Refresh token en cookie `HttpOnly` (`SameSite=Strict`, `Secure` en producción) y access solo
+  en memoria, con verificación de `Origin` en los endpoints con cookie (CSRF) — punto 3.
+- Ajustados `client.ts`, `AuthProvider`, `tokenStore` y `types.ts`.
 
-> El plan está aprobado y **aún no ejecutado** al redactar este documento. Los cambios de
-> infraestructura (B) requieren Docker, no disponible en el entorno local de desarrollo;
-> quedan pendientes de verificación en un entorno con Docker.
+> La Fase B no se pudo verificar con Docker en el entorno local (no disponible); queda pendiente
+> de una prueba real de `docker compose up --build`.
 
 ---
 
@@ -905,10 +907,11 @@ paneles.
 
 | Variable | Def. | Descripción |
 |---|---|---|
-| `POSTGRES_USER` | `finanzas` | Usuario de PostgreSQL |
-| `POSTGRES_PASSWORD` | `finanzas` | Contraseña |
+| `POSTGRES_ADMIN_USER` / `POSTGRES_ADMIN_PASSWORD` | `postgres` / `postgres` | Superusuario del contenedor (init y healthcheck) |
+| `POSTGRES_USER` | `finanzas` | Rol de aplicación (mínimo privilegio) que usa el backend |
+| `POSTGRES_PASSWORD` | `finanzas` | Contraseña del rol de aplicación |
 | `POSTGRES_DB` | `finanzas` | Nombre de la BD |
-| `POSTGRES_PORT` | `5432` | Puerto publicado |
+| `POSTGRES_PORT` | `5432` | Puerto publicado **solo en `127.0.0.1`** |
 | `BACKEND_PORT` | `4000` | Puerto del backend en el host |
 | `WEB_PORT` | `8080` | Puerto público del frontend (nginx) |
 | `CORS_ORIGIN` | `http://localhost:8080` | Origen permitido |
@@ -1051,7 +1054,9 @@ Requiere ajustar `CORS_ORIGIN` en el backend al origen del `preview` (p. ej.
 
 Servicios: `postgres` (con volumen `finanzas_postgres_data` y healthcheck `pg_isready`),
 `backend` (depende de `postgres` saludable) y `web` (depende de `backend`). El backend lee
-la BD por el host interno `postgres`.
+la BD por el host interno `postgres`. PostgreSQL se publica **solo en `127.0.0.1`** y el
+backend se conecta con un rol de mínimo privilegio creado por `postgres/init/01-app-role.sh`.
+El contenedor `web` corre nginx sin privilegios (`nginx-unprivileged`, puerto interno 8080).
 
 ### 14.4 Coolify
 
