@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/useAuth'
+import { errorMessage } from '../lib/errors'
 
 export function LoginPage() {
   const { user, login } = useAuth()
@@ -23,7 +24,7 @@ export function LoginPage() {
       const from = (location.state as { from?: string } | null)?.from ?? '/'
       navigate(from, { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión')
+      setError(errorMessage(err, 'No se pudo iniciar sesión'))
     } finally {
       setSubmitting(false)
     }

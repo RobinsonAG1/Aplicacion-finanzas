@@ -10,6 +10,7 @@ import { BillPayPanel } from '../features/bills/BillPayPanel'
 import { BillRemindersPanel } from '../features/bills/BillRemindersPanel'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatDate } from '../lib/dates'
+import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
 
 interface FormState {
@@ -108,7 +109,7 @@ export function BillsPage() {
       closeDrawer()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo guardar la factura')
+      setFormError(errorMessage(err, 'No se pudo guardar la factura'))
     } finally {
       setSaving(false)
     }
@@ -123,7 +124,7 @@ export function BillsPage() {
       if (selectedBill?.id === bill.id) closeDrawer()
       await reload()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudo eliminar la factura')
+      setActionError(errorMessage(err, 'No se pudo eliminar la factura'))
     }
   }
 
@@ -133,7 +134,7 @@ export function BillsPage() {
       await billsApi.update(bill.id, { isActive: !bill.isActive })
       await reload()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudo actualizar la factura')
+      setActionError(errorMessage(err, 'No se pudo actualizar la factura'))
     }
   }
 
@@ -145,7 +146,7 @@ export function BillsPage() {
       const result = await billsApi.runReminders({ days: 7, channel: 'LOG' })
       setRunResult(result)
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudieron generar los recordatorios')
+      setActionError(errorMessage(err, 'No se pudieron generar los recordatorios'))
     } finally {
       setRunning(false)
     }

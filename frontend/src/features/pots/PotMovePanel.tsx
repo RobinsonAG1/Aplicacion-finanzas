@@ -4,6 +4,7 @@ import { potsApi } from '../../api/pots'
 import type { Pot } from '../../api/pots'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { formatDate } from '../../lib/dates'
+import { errorMessage } from '../../lib/errors'
 import { formatCOP } from '../../lib/formatCOP'
 
 type MovementType = 'deposit' | 'withdraw'
@@ -41,7 +42,7 @@ export function PotMovePanel({ pot, initialType, onChanged, onClose }: PotMovePa
       await reload()
       await onChanged()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo registrar el movimiento')
+      setError(errorMessage(err, 'No se pudo registrar el movimiento'))
     } finally {
       setSaving(false)
     }

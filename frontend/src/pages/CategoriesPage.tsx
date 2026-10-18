@@ -5,6 +5,7 @@ import type { Category, CategoryType } from '../api/types'
 import { Drawer } from '../components/Drawer'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { errorMessage } from '../lib/errors'
 import { CATEGORY_TYPE_LABELS, CATEGORY_TYPES } from '../lib/labels'
 
 interface FormState {
@@ -65,7 +66,7 @@ export function CategoriesPage() {
       closeDrawer()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo guardar la categoría')
+      setFormError(errorMessage(err, 'No se pudo guardar la categoría'))
     } finally {
       setSaving(false)
     }
@@ -81,7 +82,7 @@ export function CategoriesPage() {
       if (form.id === category.id) resetForm()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo eliminar la categoría')
+      setFormError(errorMessage(err, 'No se pudo eliminar la categoría'))
     }
   }
 

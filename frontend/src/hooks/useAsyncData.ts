@@ -1,5 +1,6 @@
 /* oxlint-disable react/set-state-in-effect -- la carga de datos remotos sincroniza estado con la respuesta */
 import { useCallback, useEffect, useState } from 'react'
+import { errorMessage } from '../lib/errors'
 
 export interface AsyncState<T> {
   data: T | null
@@ -23,7 +24,7 @@ export function useAsyncData<T>(fetcher: () => Promise<T>): AsyncState<T> {
         if (active) setData(result)
       })
       .catch((err: unknown) => {
-        if (active) setError(err instanceof Error ? err.message : 'Error inesperado')
+        if (active) setError(errorMessage(err, 'Error inesperado'))
       })
       .finally(() => {
         if (active) setLoading(false)

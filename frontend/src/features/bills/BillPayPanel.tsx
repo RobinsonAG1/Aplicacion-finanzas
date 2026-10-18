@@ -4,6 +4,7 @@ import { billsApi } from '../../api/bills'
 import type { Bill } from '../../api/bills'
 import type { Account } from '../../api/types'
 import { toDateInputValue } from '../../lib/dates'
+import { errorMessage } from '../../lib/errors'
 import { formatCOP } from '../../lib/formatCOP'
 
 interface BillPayPanelProps {
@@ -30,7 +31,7 @@ export function BillPayPanel({ bill, accounts, onPaid, onClose }: BillPayPanelPr
       await onPaid()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo registrar el pago')
+      setError(errorMessage(err, 'No se pudo registrar el pago'))
     } finally {
       setSaving(false)
     }

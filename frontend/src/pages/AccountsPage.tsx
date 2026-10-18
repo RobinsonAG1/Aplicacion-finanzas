@@ -5,6 +5,7 @@ import type { Account, AccountType } from '../api/types'
 import { Drawer } from '../components/Drawer'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
 import { ACCOUNT_TYPE_LABELS, ACCOUNT_TYPES } from '../lib/labels'
 
@@ -71,7 +72,7 @@ export function AccountsPage() {
       closeDrawer()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo guardar la cuenta')
+      setFormError(errorMessage(err, 'No se pudo guardar la cuenta'))
     } finally {
       setSaving(false)
     }
@@ -87,7 +88,7 @@ export function AccountsPage() {
       if (form.id === account.id) resetForm()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo eliminar la cuenta')
+      setFormError(errorMessage(err, 'No se pudo eliminar la cuenta'))
     }
   }
 

@@ -3,6 +3,7 @@ import { billsApi } from '../../api/bills'
 import type { Bill } from '../../api/bills'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { formatDate, toDateInputValue } from '../../lib/dates'
+import { errorMessage } from '../../lib/errors'
 
 interface BillRemindersPanelProps {
   bill: Bill
@@ -26,7 +27,7 @@ export function BillRemindersPanel({ bill, onClose }: BillRemindersPanelProps) {
       })
       await reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear el recordatorio')
+      setError(errorMessage(err, 'No se pudo crear el recordatorio'))
     } finally {
       setSaving(false)
     }

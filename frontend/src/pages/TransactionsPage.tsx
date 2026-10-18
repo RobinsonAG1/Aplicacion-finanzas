@@ -10,6 +10,7 @@ import { RowActionsMenu } from '../components/RowActionsMenu'
 import { TransactionForm } from '../features/transactions/TransactionForm'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatDate } from '../lib/dates'
+import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
 import { TRANSACTION_TYPE_LABELS } from '../lib/labels'
 
@@ -101,7 +102,7 @@ export function TransactionsPage() {
       closeForm()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo guardar la transacción')
+      setFormError(errorMessage(err, 'No se pudo guardar la transacción'))
     } finally {
       setSaving(false)
     }
@@ -116,7 +117,7 @@ export function TransactionsPage() {
       if (formInitial?.id === transaction.id) closeForm()
       await reload()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudo eliminar la transacción')
+      setActionError(errorMessage(err, 'No se pudo eliminar la transacción'))
     }
   }
 
@@ -126,7 +127,7 @@ export function TransactionsPage() {
       await transactionsApi.setCategory(transaction.id, value || null)
       await reload()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudo cambiar la categoría')
+      setActionError(errorMessage(err, 'No se pudo cambiar la categoría'))
     }
   }
 
@@ -146,7 +147,7 @@ export function TransactionsPage() {
       link.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudo exportar el CSV')
+      setActionError(errorMessage(err, 'No se pudo exportar el CSV'))
     }
   }
 
@@ -163,7 +164,7 @@ export function TransactionsPage() {
       setPage(1)
       await reload()
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'No se pudo importar el CSV')
+      setImportError(errorMessage(err, 'No se pudo importar el CSV'))
     } finally {
       setImporting(false)
     }

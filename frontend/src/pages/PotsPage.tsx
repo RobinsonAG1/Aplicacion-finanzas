@@ -6,6 +6,7 @@ import { Drawer } from '../components/Drawer'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import { PotMovePanel } from '../features/pots/PotMovePanel'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
 
 interface FormState {
@@ -89,7 +90,7 @@ export function PotsPage() {
       closeDrawer()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo guardar la hucha')
+      setFormError(errorMessage(err, 'No se pudo guardar la hucha'))
     } finally {
       setSaving(false)
     }
@@ -104,7 +105,7 @@ export function PotsPage() {
       if (selectedPot?.id === pot.id) closeDrawer()
       await reload()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudo eliminar la hucha')
+      setActionError(errorMessage(err, 'No se pudo eliminar la hucha'))
     }
   }
 

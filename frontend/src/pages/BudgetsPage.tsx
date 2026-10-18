@@ -8,6 +8,7 @@ import { Drawer } from '../components/Drawer'
 import { RowActionsMenu } from '../components/RowActionsMenu'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { endOfMonthInput, formatDate, startOfMonthInput, toDateInputValue } from '../lib/dates'
+import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
 import { BUDGET_PERIOD_LABELS, BUDGET_PERIODS } from '../lib/labels'
 
@@ -105,7 +106,7 @@ export function BudgetsPage() {
       closeDrawer()
       await reload()
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'No se pudo guardar el presupuesto')
+      setFormError(errorMessage(err, 'No se pudo guardar el presupuesto'))
     } finally {
       setSaving(false)
     }
@@ -122,7 +123,7 @@ export function BudgetsPage() {
       }
       await reload()
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'No se pudo eliminar el presupuesto')
+      setActionError(errorMessage(err, 'No se pudo eliminar el presupuesto'))
     }
   }
 

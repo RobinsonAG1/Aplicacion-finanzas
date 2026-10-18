@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/useAuth'
+import { errorMessage } from '../lib/errors'
 
 export function RegisterPage() {
   const { user, register } = useAuth()
@@ -22,7 +23,7 @@ export function RegisterPage() {
       await register({ name, email, password })
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo crear la cuenta')
+      setError(errorMessage(err, 'No se pudo crear la cuenta'))
     } finally {
       setSubmitting(false)
     }
