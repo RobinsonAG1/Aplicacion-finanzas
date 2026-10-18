@@ -3,15 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { DashboardPage } from './DashboardPage'
 import { AuthContext } from '../features/auth/auth-context'
-
-function jsonResponse(status: number, body: unknown) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: () => null },
-    json: async () => body,
-  }
-}
+import { jsonResponse } from '../test/helpers'
 
 function mockApi(): void {
   vi.stubGlobal(

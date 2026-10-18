@@ -1,15 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { AnalyticsPage } from './AnalyticsPage'
-
-function jsonResponse(status: number, body: unknown) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: () => null },
-    json: async () => body,
-  }
-}
+import { jsonResponse } from '../test/helpers'
 
 function mockApi(): void {
   vi.stubGlobal(

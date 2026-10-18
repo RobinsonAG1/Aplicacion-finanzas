@@ -1,22 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { analyticsApi } from './analytics'
 import { tokenStore } from '../lib/tokens'
-
-interface MockPayload {
-  status: number
-  body?: unknown
-}
-
-function mockFetch(payload: MockPayload): ReturnType<typeof vi.fn> {
-  const fn = vi.fn().mockResolvedValue({
-    ok: payload.status >= 200 && payload.status < 300,
-    status: payload.status,
-    headers: { get: () => null },
-    json: async () => payload.body,
-  })
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
+import { stubFetchResponse } from '../test/helpers'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -25,7 +10,7 @@ afterEach(() => {
 
 describe('analyticsApi', () => {
   it('obtiene el resumen con rango', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 200,
       body: { data: { from: 'a', to: 'b', totals: { income: 1 }, byCategory: [], byAccount: [] } },
     })
@@ -39,7 +24,7 @@ describe('analyticsApi', () => {
   })
 
   it('pide la serie mensual con el número de meses', async () => {
-    const fn = mockFetch({ status: 200, body: { data: { months: [] } } })
+    const fn = stubFetchResponse({ status: 200, body: { data: { months: [] } } })
 
     await analyticsApi.monthly(6)
 
@@ -47,7 +32,7 @@ describe('analyticsApi', () => {
   })
 
   it('pide las tendencias sin parámetros por defecto', async () => {
-    const fn = mockFetch({ status: 200, body: { data: { trends: [] } } })
+    const fn = stubFetchResponse({ status: 200, body: { data: { trends: [] } } })
 
     await analyticsApi.categoryTrends()
 
@@ -55,7 +40,7 @@ describe('analyticsApi', () => {
   })
 
   it('pide la evolución de saldo con rango y límite', async () => {
-    const fn = mockFetch({ status: 200, body: { data: { timeline: [] } } })
+    const fn = stubFetchResponse({ status: 200, body: { data: { timeline: [] } } })
 
     await analyticsApi.balanceTimeline('2026-01-01T00:00:00.000Z', '2026-06-30T23:59:59.999Z', 500)
 

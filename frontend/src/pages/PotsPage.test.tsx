@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { PotsPage } from './PotsPage'
+import { jsonResponse } from '../test/helpers'
 
 const POT = {
   id: 'p1',
@@ -26,15 +27,6 @@ const DETAIL = {
       note: 'Ahorro inicial',
     },
   ],
-}
-
-function jsonResponse(status: number, body: unknown) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: () => null },
-    json: async () => body,
-  }
 }
 
 function mockApi(pots: unknown[]): void {

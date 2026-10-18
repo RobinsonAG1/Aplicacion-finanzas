@@ -3,21 +3,7 @@ import { accountsApi } from './accounts'
 import { categoriesApi } from './categories'
 import { ApiError } from './client'
 import { tokenStore } from '../lib/tokens'
-
-interface MockResponse {
-  status: number
-  body?: unknown
-}
-
-function mockFetch(payload: MockResponse): ReturnType<typeof vi.fn> {
-  const fn = vi.fn().mockResolvedValue({
-    ok: payload.status >= 200 && payload.status < 300,
-    status: payload.status,
-    json: async () => payload.body,
-  })
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
+import { stubFetchResponse } from '../test/helpers'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -26,7 +12,7 @@ afterEach(() => {
 
 describe('accountsApi', () => {
   it('lista cuentas y desenvuelve data', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 200,
       body: { data: [{ id: '1', name: 'Ahorros', type: 'SAVINGS', balance: '1500000' }] },
     })
@@ -41,7 +27,7 @@ describe('accountsApi', () => {
 
   it('crea una cuenta enviando body y token', async () => {
     tokenStore.setAccess('tok-123')
-    const fn = mockFetch({ status: 201, body: { data: { id: '2', name: 'Efectivo' } } })
+    const fn = stubFetchResponse({ status: 201, body: { data: { id: '2', name: 'Efectivo' } } })
 
     await accountsApi.create({ name: 'Efectivo', type: 'CASH', balance: 50000 })
 
@@ -57,14 +43,14 @@ describe('accountsApi', () => {
   })
 
   it('elimina una cuenta (204 sin cuerpo)', async () => {
-    const fn = mockFetch({ status: 204 })
+    const fn = stubFetchResponse({ status: 204 })
     const result = await accountsApi.remove('9')
     expect(result).toBeUndefined()
     expect(fn.mock.calls[0][1].method).toBe('DELETE')
   })
 
   it('lanza ApiError con el mensaje del backend', async () => {
-    mockFetch({
+    stubFetchResponse({
       status: 409,
       body: { error: { message: 'La cuenta tiene transacciones', code: 'ACCOUNT_IN_USE' } },
     })
@@ -81,7 +67,7 @@ describe('accountsApi', () => {
 
 describe('categoriesApi', () => {
   it('crea una categoría con color', async () => {
-    const fn = mockFetch({ status: 201, body: { data: { id: 'c1', name: 'Comida' } } })
+    const fn = stubFetchResponse({ status: 201, body: { data: { id: 'c1', name: 'Comida' } } })
 
     await categoriesApi.create({ name: 'Comida', type: 'EXPENSE', color: '#ef4444' })
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { BudgetsPage } from './BudgetsPage'
+import { jsonResponse } from '../test/helpers'
 
 const CATEGORY = {
   id: 'c1',
@@ -26,15 +27,6 @@ function summary(overrides: Record<string, unknown> = {}) {
     exceeded: false,
     window: { from: '2026-10-01T00:00:00.000Z', to: '2026-10-31T23:59:59.999Z' },
     ...overrides,
-  }
-}
-
-function jsonResponse(status: number, body: unknown) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: () => null },
-    json: async () => body,
   }
 }
 

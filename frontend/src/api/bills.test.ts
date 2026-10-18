@@ -2,22 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { billsApi } from './bills'
 import { ApiError } from './client'
 import { tokenStore } from '../lib/tokens'
-
-interface MockPayload {
-  status: number
-  body?: unknown
-}
-
-function mockFetch(payload: MockPayload): ReturnType<typeof vi.fn> {
-  const fn = vi.fn().mockResolvedValue({
-    ok: payload.status >= 200 && payload.status < 300,
-    status: payload.status,
-    headers: { get: () => null },
-    json: async () => payload.body,
-  })
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
+import { stubFetchResponse } from '../test/helpers'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -26,7 +11,7 @@ afterEach(() => {
 
 describe('billsApi', () => {
   it('lista facturas sin y con filtro de estado', async () => {
-    const fn = mockFetch({ status: 200, body: { data: [] } })
+    const fn = stubFetchResponse({ status: 200, body: { data: [] } })
 
     await billsApi.list()
     await billsApi.list(true)
@@ -36,7 +21,7 @@ describe('billsApi', () => {
   })
 
   it('consulta próximos vencimientos', async () => {
-    const fn = mockFetch({ status: 200, body: { data: { days: 30, upcoming: [] } } })
+    const fn = stubFetchResponse({ status: 200, body: { data: { days: 30, upcoming: [] } } })
 
     const result = await billsApi.upcoming(30)
 
@@ -45,7 +30,7 @@ describe('billsApi', () => {
   })
 
   it('crea una factura enviando el body', async () => {
-    const fn = mockFetch({ status: 201, body: { data: { id: 'b1' } } })
+    const fn = stubFetchResponse({ status: 201, body: { data: { id: 'b1' } } })
 
     await billsApi.create({ name: 'Internet', amount: 120000, dueDay: 20, isActive: true })
 
@@ -59,7 +44,7 @@ describe('billsApi', () => {
   })
 
   it('paga una factura devolviendo factura y transacción', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 201,
       body: { data: { bill: { id: 'b1' }, transaction: { id: 't1' } } },
     })
@@ -72,7 +57,7 @@ describe('billsApi', () => {
   })
 
   it('propaga el 409 al crear un recordatorio duplicado', async () => {
-    mockFetch({
+    stubFetchResponse({
       status: 409,
       body: { error: { message: 'Ya existe un recordatorio para esa fecha', code: 'REMINDER_EXISTS' } },
     })
@@ -86,7 +71,7 @@ describe('billsApi', () => {
   })
 
   it('ejecuta los recordatorios y devuelve el resumen', async () => {
-    const fn = mockFetch({ status: 200, body: { data: { created: 2, skipped: 1, reminders: [] } } })
+    const fn = stubFetchResponse({ status: 200, body: { data: { created: 2, skipped: 1, reminders: [] } } })
 
     const result = await billsApi.runReminders({ days: 7, channel: 'LOG' })
 

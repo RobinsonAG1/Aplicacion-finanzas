@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { BillsPage } from './BillsPage'
+import { jsonResponse } from '../test/helpers'
 
 const CATEGORY = {
   id: 'c1',
@@ -34,15 +35,6 @@ const LUZ = {
   nextDueDate: '2026-10-10T00:00:00.000Z',
   daysUntil: -2,
   overdue: true,
-}
-
-function jsonResponse(status: number, body: unknown) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: () => null },
-    json: async () => body,
-  }
 }
 
 function mockApi(bills: unknown[]): void {

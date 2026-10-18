@@ -1,25 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { transactionsApi } from './transactions'
 import { tokenStore } from '../lib/tokens'
-
-interface MockPayload {
-  status: number
-  body?: unknown
-  blobText?: string
-  headers?: Record<string, string>
-}
-
-function mockFetch(payload: MockPayload): ReturnType<typeof vi.fn> {
-  const fn = vi.fn().mockResolvedValue({
-    ok: payload.status >= 200 && payload.status < 300,
-    status: payload.status,
-    headers: { get: (name: string) => payload.headers?.[name.toLowerCase()] ?? null },
-    json: async () => payload.body,
-    blob: async () => new Blob([payload.blobText ?? '']),
-  })
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
+import { stubFetchResponse } from '../test/helpers'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -28,7 +10,7 @@ afterEach(() => {
 
 describe('transactionsApi', () => {
   it('lista con filtros y paginación en la query string', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 200,
       body: { data: [], meta: { total: 0, page: 2, limit: 20, totalPages: 0 } },
     })
@@ -42,7 +24,7 @@ describe('transactionsApi', () => {
   })
 
   it('crea una transacción y desenvuelve data', async () => {
-    const fn = mockFetch({ status: 201, body: { data: { id: 't1', amount: '45000' } } })
+    const fn = stubFetchResponse({ status: 201, body: { data: { id: 't1', amount: '45000' } } })
 
     const created = await transactionsApi.create({
       accountId: 'a1',
@@ -60,7 +42,7 @@ describe('transactionsApi', () => {
   })
 
   it('cambia la categoría con PATCH', async () => {
-    const fn = mockFetch({ status: 200, body: { data: { id: 't1' } } })
+    const fn = stubFetchResponse({ status: 200, body: { data: { id: 't1' } } })
 
     await transactionsApi.setCategory('t1', null)
 
@@ -70,7 +52,7 @@ describe('transactionsApi', () => {
   })
 
   it('obtiene sugerencias de categoría por comercio', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 200,
       body: {
         suggestions: [
@@ -92,7 +74,7 @@ describe('transactionsApi', () => {
   })
 
   it('exporta el CSV como blob con el nombre del archivo', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 200,
       blobText: 'fecha,comercio,monto',
       headers: { 'content-disposition': 'attachment; filename="transacciones.csv"' },
@@ -108,7 +90,7 @@ describe('transactionsApi', () => {
   })
 
   it('importa un CSV como multipart y devuelve el resumen', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 200,
       body: { data: { total: 2, imported: 1, skipped: 1, errors: [] } },
     })

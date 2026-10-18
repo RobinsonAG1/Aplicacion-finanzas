@@ -2,22 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { potsApi } from './pots'
 import { ApiError } from './client'
 import { tokenStore } from '../lib/tokens'
-
-interface MockPayload {
-  status: number
-  body?: unknown
-}
-
-function mockFetch(payload: MockPayload): ReturnType<typeof vi.fn> {
-  const fn = vi.fn().mockResolvedValue({
-    ok: payload.status >= 200 && payload.status < 300,
-    status: payload.status,
-    headers: { get: () => null },
-    json: async () => payload.body,
-  })
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
+import { stubFetchResponse } from '../test/helpers'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -26,7 +11,7 @@ afterEach(() => {
 
 describe('potsApi', () => {
   it('lista huchas y desenvuelve data', async () => {
-    const fn = mockFetch({ status: 200, body: { data: [{ id: 'p1', name: 'Vacaciones' }] } })
+    const fn = stubFetchResponse({ status: 200, body: { data: [{ id: 'p1', name: 'Vacaciones' }] } })
 
     const pots = await potsApi.list()
 
@@ -35,7 +20,7 @@ describe('potsApi', () => {
   })
 
   it('obtiene el detalle con historial y límite', async () => {
-    const fn = mockFetch({
+    const fn = stubFetchResponse({
       status: 200,
       body: { data: { id: 'p1', transactions: [{ id: 'm1', amount: '250000.00' }] } },
     })
@@ -47,7 +32,7 @@ describe('potsApi', () => {
   })
 
   it('deposita enviando monto y nota', async () => {
-    const fn = mockFetch({ status: 201, body: { data: { id: 'p1', currentAmount: '300000.00' } } })
+    const fn = stubFetchResponse({ status: 201, body: { data: { id: 'p1', currentAmount: '300000.00' } } })
 
     await potsApi.deposit('p1', { amount: 50000, note: 'Ahorro' })
 
@@ -57,7 +42,7 @@ describe('potsApi', () => {
   })
 
   it('propaga el error de fondos insuficientes al retirar', async () => {
-    mockFetch({
+    stubFetchResponse({
       status: 422,
       body: { error: { message: 'Saldo insuficiente en la hucha', code: 'POT_INSUFFICIENT_FUNDS' } },
     })
@@ -71,7 +56,7 @@ describe('potsApi', () => {
   })
 
   it('elimina una hucha (204)', async () => {
-    const fn = mockFetch({ status: 204 })
+    const fn = stubFetchResponse({ status: 204 })
     await expect(potsApi.remove('p1')).resolves.toBeUndefined()
     expect(fn.mock.calls[0][1].method).toBe('DELETE')
   })

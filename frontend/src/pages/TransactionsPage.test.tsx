@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TransactionsPage } from './TransactionsPage'
+import { jsonResponse } from '../test/helpers'
 
 const ACCOUNT = {
   id: 'a1',
@@ -33,16 +34,6 @@ const TRANSACTION = {
   date: '2026-10-05T00:00:00.000Z',
   category: CATEGORY,
   account: { id: 'a1', name: 'Nómina', type: 'SAVINGS', currency: 'COP' },
-}
-
-function jsonResponse(status: number, body: unknown) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    headers: { get: () => null },
-    json: async () => body,
-    blob: async () => new Blob(),
-  }
 }
 
 function mockApi(transactions: unknown[], meta: Record<string, number>): void {

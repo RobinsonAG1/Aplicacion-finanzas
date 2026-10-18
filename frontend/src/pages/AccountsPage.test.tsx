@@ -1,17 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { AccountsPage } from './AccountsPage'
-
-function mockFetch(payload: { status: number; body?: unknown }): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: payload.status >= 200 && payload.status < 300,
-      status: payload.status,
-      json: async () => payload.body,
-    }),
-  )
-}
+import { stubFetchResponse } from '../test/helpers'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -19,7 +9,7 @@ afterEach(() => {
 
 describe('AccountsPage', () => {
   it('muestra las cuentas con su saldo formateado en COP', async () => {
-    mockFetch({
+    stubFetchResponse({
       status: 200,
       body: {
         data: [
@@ -43,7 +33,7 @@ describe('AccountsPage', () => {
   })
 
   it('muestra un mensaje cuando no hay cuentas', async () => {
-    mockFetch({ status: 200, body: { data: [] } })
+    stubFetchResponse({ status: 200, body: { data: [] } })
 
     render(<AccountsPage />)
 
