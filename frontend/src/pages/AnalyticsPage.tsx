@@ -16,7 +16,9 @@ import {
 } from 'recharts'
 import { analyticsApi } from '../api/analytics'
 import type { CategorySpend } from '../api/analytics'
+import { useTheme } from '../features/theme/useTheme'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { CHART_PALETTES } from '../lib/chartPalette'
 import { formatDate, formatMonthLabel } from '../lib/dates'
 import { formatCOP, formatNumber, formatPercent } from '../lib/formatCOP'
 
@@ -45,6 +47,14 @@ function topCategories(categories: CategorySpend[], size = 6): CategorySpend[] {
 
 export function AnalyticsPage() {
   const [months, setMonths] = useState(6)
+  const { resolvedTheme } = useTheme()
+  const palette = CHART_PALETTES[resolvedTheme]
+  const tooltipStyle = {
+    background: palette.tooltipBg,
+    border: `1px solid ${palette.tooltipBorder}`,
+    borderRadius: 8,
+    color: palette.tooltipText,
+  }
 
   const loadSummary = useCallback(() => {
     const { from, to } = monthRange(months)
@@ -117,16 +127,23 @@ export function AnalyticsPage() {
           {monthly.data && monthly.data.months.length > 0 && (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={monthly.data.months}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="month" tickFormatter={formatMonthLabel} stroke="#94a3b8" />
-                <YAxis tickFormatter={(value) => formatNumber(value)} stroke="#94a3b8" width={70} />
+                <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
+                <XAxis dataKey="month" tickFormatter={formatMonthLabel} stroke={palette.axis} />
+                <YAxis
+                  tickFormatter={(value) => formatNumber(value)}
+                  stroke={palette.axis}
+                  width={70}
+                />
                 <Tooltip
                   formatter={(value) => formatCOP(Number(value))}
                   labelFormatter={(label) => formatMonthLabel(String(label))}
+                  contentStyle={tooltipStyle}
+                  labelStyle={{ color: palette.tooltipText }}
+                  itemStyle={{ color: palette.tooltipText }}
                 />
-                <Legend />
-                <Bar dataKey="income" name="Ingresos" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expense" name="Gastos" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                <Legend wrapperStyle={{ color: palette.axis }} />
+                <Bar dataKey="income" name="Ingresos" fill={palette.income} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expense" name="Gastos" fill={palette.expense} radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -155,8 +172,13 @@ export function AnalyticsPage() {
                     <Cell key={item.id} fill={item.color} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value) => formatCOP(Number(value))} />
-                <Legend />
+                <Tooltip
+                  formatter={(value) => formatCOP(Number(value))}
+                  contentStyle={tooltipStyle}
+                  labelStyle={{ color: palette.tooltipText }}
+                  itemStyle={{ color: palette.tooltipText }}
+                />
+                <Legend wrapperStyle={{ color: palette.axis }} />
               </PieChart>
             </ResponsiveContainer>
           )}
@@ -169,23 +191,30 @@ export function AnalyticsPage() {
           {timeline.data && timeline.data.timeline.length > 0 && (
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={timeline.data.timeline}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(value) => formatDate(String(value))}
-                  stroke="#94a3b8"
+                  stroke={palette.axis}
                   minTickGap={40}
                 />
-                <YAxis tickFormatter={(value) => formatNumber(value)} stroke="#94a3b8" width={70} />
+                <YAxis
+                  tickFormatter={(value) => formatNumber(value)}
+                  stroke={palette.axis}
+                  width={70}
+                />
                 <Tooltip
                   formatter={(value) => formatCOP(Number(value))}
                   labelFormatter={(label) => formatDate(String(label))}
+                  contentStyle={tooltipStyle}
+                  labelStyle={{ color: palette.tooltipText }}
+                  itemStyle={{ color: palette.tooltipText }}
                 />
                 <Line
                   type="monotone"
                   dataKey="runningBalance"
                   name="Saldo"
-                  stroke="#22c55e"
+                  stroke={palette.line}
                   dot={false}
                   strokeWidth={2}
                 />

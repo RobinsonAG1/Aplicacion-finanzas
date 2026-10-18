@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/useAuth'
+import { ThemeToggle } from '../features/theme/ThemeToggle'
 
 const NAV_ITEMS = [
   { to: '/', label: 'Resumen', end: true },
@@ -46,9 +47,12 @@ export function Layout() {
             <strong>{user?.name}</strong>
             <span>{user?.email}</span>
           </div>
-          <button type="button" className="btn" onClick={handleLogout}>
-            Cerrar sesión
-          </button>
+          <div className="topbar-actions">
+            <ThemeToggle />
+            <button type="button" className="btn" onClick={handleLogout}>
+              Cerrar sesión
+            </button>
+          </div>
         </header>
         <main className="content">
           <Suspense fallback={<p className="muted">Cargando…</p>}>
