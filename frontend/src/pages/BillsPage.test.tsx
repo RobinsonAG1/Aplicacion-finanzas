@@ -103,7 +103,8 @@ describe('BillsPage', () => {
     render(<BillsPage />)
     await screen.findByText('Internet')
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Recordatorios' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Más acciones' })[0])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Recordatorios' }))
 
     expect(await screen.findByText('Recordatorios · Internet')).toBeInTheDocument()
     expect(await screen.findByText('SENT')).toBeInTheDocument()

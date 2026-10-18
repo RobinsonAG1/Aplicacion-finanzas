@@ -4,6 +4,8 @@ import { accountsApi } from '../api/accounts'
 import { billsApi } from '../api/bills'
 import type { Bill, BillInput, RunRemindersResult } from '../api/bills'
 import { categoriesApi } from '../api/categories'
+import { Drawer } from '../components/Drawer'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import { BillPayPanel } from '../features/bills/BillPayPanel'
 import { BillRemindersPanel } from '../features/bills/BillRemindersPanel'
 import { useAsyncData } from '../hooks/useAsyncData'
@@ -33,6 +35,7 @@ export function BillsPage() {
   const [running, setRunning] = useState(false)
   const [mode, setMode] = useState<PanelMode>('form')
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const loadBills = useCallback(() => {
     const parsed = activeFilter === '' ? undefined : activeFilter === 'true'
@@ -52,6 +55,19 @@ export function BillsPage() {
     setFormError(null)
   }
 
+  function openCreate(): void {
+    resetForm()
+    setMode('form')
+    setDrawerOpen(true)
+  }
+
+  function closeDrawer(): void {
+    setDrawerOpen(false)
+    setMode('form')
+    setSelectedBill(null)
+    resetForm()
+  }
+
   function startEdit(bill: Bill): void {
     setForm({
       id: bill.id,
@@ -63,11 +79,13 @@ export function BillsPage() {
     })
     setFormError(null)
     setMode('form')
+    setDrawerOpen(true)
   }
 
   function startPanel(bill: Bill, next: Exclude<PanelMode, 'form'>): void {
     setSelectedBill(bill)
     setMode(next)
+    setDrawerOpen(true)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -87,7 +105,7 @@ export function BillsPage() {
       } else {
         await billsApi.create(payload)
       }
-      resetForm()
+      closeDrawer()
       await reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar la factura')
@@ -102,7 +120,7 @@ export function BillsPage() {
     try {
       await billsApi.remove(bill.id)
       if (form.id === bill.id) resetForm()
-      if (selectedBill?.id === bill.id) setMode('form')
+      if (selectedBill?.id === bill.id) closeDrawer()
       await reload()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo eliminar la factura')
@@ -133,6 +151,15 @@ export function BillsPage() {
     }
   }
 
+  const drawerLabel =
+    mode === 'pay' && selectedBill
+      ? `Pagar ${selectedBill.name}`
+      : mode === 'reminders' && selectedBill
+        ? `Recordatorios · ${selectedBill.name}`
+        : editing
+          ? 'Editar factura'
+          : 'Nueva factura'
+
   return (
     <section className="page">
       <div className="page-head">
@@ -140,14 +167,19 @@ export function BillsPage() {
           <h1>Facturas recurrentes</h1>
           <p className="muted">Controla vencimientos, pagos y recordatorios.</p>
         </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => void handleRunReminders()}
-          disabled={running}
-        >
-          {running ? 'Generando…' : 'Generar recordatorios (7 días)'}
-        </button>
+        <div className="page-actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => void handleRunReminders()}
+            disabled={running}
+          >
+            {running ? 'Generando…' : 'Generar recordatorios (7 días)'}
+          </button>
+          <button type="button" className="btn btn-primary" onClick={openCreate}>
+            Nueva factura
+          </button>
+        </div>
       </div>
 
       {runResult && (
@@ -169,98 +201,85 @@ export function BillsPage() {
         </select>
       </div>
 
-      <div className="split">
-        <div className="panel">
-          {loading && <p className="muted">Cargando…</p>}
-          {error && <p className="alert">{error}</p>}
-          {!loading && !error && (bills ?? []).length === 0 && (
-            <p className="muted">No hay facturas registradas.</p>
-          )}
-          {(bills ?? []).length > 0 && (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th className="right">Monto</th>
-                  <th>Categoría</th>
-                  <th>Vence</th>
-                  <th>Estado</th>
-                  <th />
+      <div className="panel">
+        {loading && <p className="muted">Cargando…</p>}
+        {error && <p className="alert">{error}</p>}
+        {!loading && !error && (bills ?? []).length === 0 && (
+          <p className="muted">No hay facturas registradas.</p>
+        )}
+        {(bills ?? []).length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th className="right">Monto</th>
+                <th>Categoría</th>
+                <th>Vence</th>
+                <th>Estado</th>
+                <th className="cell-actions">
+                  <span className="sr-only">Acciones</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {(bills ?? []).map((bill) => (
+                <tr key={bill.id}>
+                  <td>{bill.name}</td>
+                  <td className="right">{formatCOP(bill.amount)}</td>
+                  <td>
+                    {bill.category ? (
+                      <span className="category-cell">
+                        <span
+                          className="color-dot"
+                          style={{ backgroundColor: bill.category.color }}
+                        />
+                        {bill.category.name}
+                      </span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                  <td>
+                    <div>{formatDate(bill.nextDueDate)}</div>
+                    <div className={`small ${bill.overdue ? 'amount-expense' : 'muted'}`}>
+                      {bill.overdue ? 'Vencida' : `en ${bill.daysUntil} d`}
+                    </div>
+                  </td>
+                  <td>
+                    {bill.overdue ? (
+                      <span className="badge badge-danger">Vencida</span>
+                    ) : bill.isActive ? (
+                      <span className="badge">Activa</span>
+                    ) : (
+                      <span className="badge">Inactiva</span>
+                    )}
+                  </td>
+                  <td className="cell-actions">
+                    <RowActionsMenu
+                      actions={[
+                        { label: 'Pagar', onSelect: () => startPanel(bill, 'pay') },
+                        { label: 'Recordatorios', onSelect: () => startPanel(bill, 'reminders') },
+                        {
+                          label: bill.isActive ? 'Desactivar' : 'Activar',
+                          onSelect: () => void handleToggleActive(bill),
+                        },
+                        { label: 'Editar', onSelect: () => startEdit(bill) },
+                        {
+                          label: 'Eliminar',
+                          onSelect: () => void handleDelete(bill),
+                          danger: true,
+                        },
+                      ]}
+                    />
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {(bills ?? []).map((bill) => (
-                  <tr key={bill.id}>
-                    <td>{bill.name}</td>
-                    <td className="right">{formatCOP(bill.amount)}</td>
-                    <td>
-                      {bill.category ? (
-                        <span className="category-cell">
-                          <span
-                            className="color-dot"
-                            style={{ backgroundColor: bill.category.color }}
-                          />
-                          {bill.category.name}
-                        </span>
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                    <td>
-                      <div>{formatDate(bill.nextDueDate)}</div>
-                      <div className={`small ${bill.overdue ? 'amount-expense' : 'muted'}`}>
-                        {bill.overdue ? 'Vencida' : `en ${bill.daysUntil} d`}
-                      </div>
-                    </td>
-                    <td>
-                      {bill.overdue ? (
-                        <span className="badge badge-danger">Vencida</span>
-                      ) : bill.isActive ? (
-                        <span className="badge">Activa</span>
-                      ) : (
-                        <span className="badge">Inactiva</span>
-                      )}
-                    </td>
-                    <td className="actions">
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => startPanel(bill, 'pay')}
-                      >
-                        Pagar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => startPanel(bill, 'reminders')}
-                      >
-                        Recordatorios
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => void handleToggleActive(bill)}
-                      >
-                        {bill.isActive ? 'Desactivar' : 'Activar'}
-                      </button>
-                      <button type="button" className="btn btn-sm" onClick={() => startEdit(bill)}>
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        onClick={() => void handleDelete(bill)}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
+      <Drawer open={drawerOpen} onClose={closeDrawer} label={drawerLabel}>
         {mode === 'pay' && selectedBill ? (
           <BillPayPanel
             key={selectedBill.id}
@@ -269,13 +288,13 @@ export function BillsPage() {
             onPaid={async () => {
               await reload()
             }}
-            onClose={() => setMode('form')}
+            onClose={closeDrawer}
           />
         ) : mode === 'reminders' && selectedBill ? (
           <BillRemindersPanel
             key={selectedBill.id}
             bill={selectedBill}
-            onClose={() => setMode('form')}
+            onClose={closeDrawer}
           />
         ) : (
           <form className="panel form-panel" onSubmit={handleSubmit}>
@@ -341,15 +360,13 @@ export function BillsPage() {
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear factura'}
               </button>
-              {editing && (
-                <button type="button" className="btn" onClick={resetForm}>
-                  Cancelar
-                </button>
-              )}
+              <button type="button" className="btn" onClick={closeDrawer}>
+                Cancelar
+              </button>
             </div>
           </form>
         )}
-      </div>
+      </Drawer>
     </section>
   )
 }

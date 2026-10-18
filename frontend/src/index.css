@@ -503,6 +503,12 @@ h3 {
   flex-wrap: wrap;
 }
 
+.page-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
