@@ -1,4 +1,5 @@
 import { prisma } from '../src/db/prisma.js';
+import { env } from '../src/config/env.js';
 import { hashPassword } from '../src/utils/password.js';
 import {
   AccountType,
@@ -153,6 +154,12 @@ const DEMO_EMAIL = 'demo@finanzas.test';
 const DEMO_PASSWORD = 'Demo1234!';
 
 async function main(): Promise<void> {
+  if (env.isProduction && process.env.SEED_FORCE !== 'true') {
+    throw new Error(
+      'El seed borra todos los datos y no puede ejecutarse en produccion. ' +
+        'Define SEED_FORCE=true para forzarlo conscientemente.',
+    );
+  }
   console.log('Limpiando datos previos...');
   await prisma.billReminder.deleteMany();
   await prisma.recurringBill.deleteMany();
