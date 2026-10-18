@@ -9,6 +9,9 @@ import type { ExportTransactionsQuery } from '../schemas/transaction.schema.js';
 
 const CSV_HEADER = ['fecha', 'tipo', 'monto', 'cuenta', 'categoria', 'comercio', 'descripcion'];
 
+const MAX_IMPORT_ROWS = 5000;
+const MAX_IMPORT_FIELD_LENGTH = 2000;
+
 const COLUMN_ALIASES: Record<string, string> = {
   fecha: 'date',
   date: 'date',
@@ -157,6 +160,12 @@ export const transactionCsvService = {
       });
     }
 
+    if (parsed.length - 1 > MAX_IMPORT_ROWS) {
+      throw new AppError(`El CSV supera el maximo de ${MAX_IMPORT_ROWS} filas`, 400, {
+        code: 'CSV_TOO_MANY_ROWS',
+      });
+    }
+
     const accounts = await accountRepository.listByUser(userId);
     const categories = await categoryRepository.listByUser(userId);
     const accountByName = new Map(accounts.map((a) => [normalize(a.name), a]));
@@ -178,6 +187,11 @@ export const transactionCsvService = {
       const raw = parsed[r] as string[];
       if (raw.every((cell) => cell.trim() === '')) continue;
       summary.total += 1;
+
+      if (raw.some((cell) => cell.length > MAX_IMPORT_FIELD_LENGTH)) {
+        summary.errors.push({ row: r + 1, message: 'campo demasiado largo' });
+        continue;
+      }
 
       const get = (field: string): string => {
         const col = index[field];

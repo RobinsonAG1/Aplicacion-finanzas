@@ -1,5 +1,13 @@
+// Caracteres que Excel/Sheets interpretan como inicio de formula (CSV injection).
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
 export function escapeCsvField(value: unknown): string {
-  const text = value === null || value === undefined ? '' : String(value);
+  const isNumeric = typeof value === 'number' || typeof value === 'bigint';
+  let text = value === null || value === undefined ? '' : String(value);
+  // Solo se neutralizan celdas de texto: los numeros negativos se exportan intactos.
+  if (!isNumeric && FORMULA_PREFIX.test(text)) {
+    text = `'${text}`;
+  }
   if (/[",\r\n]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }
