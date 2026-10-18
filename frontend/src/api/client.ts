@@ -1,6 +1,6 @@
 import { env } from '../lib/env'
 import { tokenStore } from '../lib/tokens'
-import type { ApiErrorBody, AuthResponse } from './types'
+import type { ApiErrorBody } from './types'
 
 export class ApiError extends Error {
   public readonly status: number
@@ -25,23 +25,21 @@ export interface RequestOptions {
 
 let refreshInFlight: Promise<boolean> | null = null
 
+// Renueva el access token usando la cookie HttpOnly de refresh (sin cuerpo).
 async function refreshTokens(): Promise<boolean> {
-  const refreshToken = tokenStore.getRefresh()
-  if (!refreshToken) return false
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
         const res = await fetch(`${env.apiUrl}/auth/refresh`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
+          credentials: 'include',
         })
         if (!res.ok) {
           tokenStore.clear()
           return false
         }
-        const data = (await res.json()) as AuthResponse
-        tokenStore.set({ access: data.accessToken, refresh: data.refreshToken })
+        const data = (await res.json()) as { accessToken: string }
+        tokenStore.setAccess(data.accessToken)
         return true
       } catch {
         tokenStore.clear()
@@ -71,13 +69,17 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, message, code, details)
 }
 
+function withCreds(init: RequestInit): RequestInit {
+  return { ...init, credentials: 'include' }
+}
+
 async function authFetch(path: string, init: RequestInit, auth: boolean): Promise<Response> {
   const withAuth = (): RequestInit => {
-    if (!auth) return init
+    if (!auth) return withCreds(init)
     const headers = new Headers(init.headers)
     const token = tokenStore.getAccess()
     if (token) headers.set('Authorization', `Bearer ${token}`)
-    return { ...init, headers }
+    return withCreds({ ...init, headers })
   }
 
   let response = await fetch(`${env.apiUrl}${path}`, withAuth())

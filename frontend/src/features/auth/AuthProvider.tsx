@@ -7,8 +7,8 @@ import type { User } from '../../api/types'
 import { AuthContext } from './auth-context'
 import type { AuthContextValue } from './auth-context'
 
-function applySession(tokens: { accessToken: string; refreshToken: string }): void {
-  tokenStore.set({ access: tokens.accessToken, refresh: tokens.refreshToken })
+function applySession(session: { accessToken: string }): void {
+  tokenStore.setAccess(session.accessToken)
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -18,11 +18,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true
 
+    // No hay access token en memoria al cargar: /me devolvera 401 y el cliente
+    // renovara con la cookie HttpOnly; si falla, la sesion queda vacia.
     async function bootstrap(): Promise<void> {
-      if (!tokenStore.getAccess()) {
-        setLoading(false)
-        return
-      }
       try {
         const current = await authApi.me()
         if (active) setUser(current)
@@ -52,15 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(async () => {
-    const refreshToken = tokenStore.getRefresh()
     tokenStore.clear()
     setUser(null)
-    if (refreshToken) {
-      try {
-        await authApi.logout(refreshToken)
-      } catch {
-        /* el logout local ya se aplico */
-      }
+    try {
+      await authApi.logout()
+    } catch {
+      /* el logout local ya se aplico */
     }
   }, [])
 

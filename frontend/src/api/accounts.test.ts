@@ -40,7 +40,7 @@ describe('accountsApi', () => {
   })
 
   it('crea una cuenta enviando body y token', async () => {
-    tokenStore.set({ access: 'tok-123', refresh: 'ref-123' })
+    tokenStore.setAccess('tok-123')
     const fn = mockFetch({ status: 201, body: { data: { id: '2', name: 'Efectivo' } } })
 
     await accountsApi.create({ name: 'Efectivo', type: 'CASH', balance: 50000 })

@@ -1,43 +1,15 @@
-const ACCESS_KEY = 'finanzas.accessToken'
-const REFRESH_KEY = 'finanzas.refreshToken'
-
-function safeGet(key: string): string | null {
-  try {
-    return window.localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function safeSet(key: string, value: string): void {
-  try {
-    window.localStorage.setItem(key, value)
-  } catch {
-    /* almacenamiento no disponible */
-  }
-}
-
-function safeRemove(key: string): void {
-  try {
-    window.localStorage.removeItem(key)
-  } catch {
-    /* almacenamiento no disponible */
-  }
-}
+// El access token vive solo en memoria (nunca en localStorage): al recargar la
+// pagina se recupera con el refresh token, que viaja en una cookie HttpOnly.
+let accessToken: string | null = null
 
 export const tokenStore = {
   getAccess(): string | null {
-    return safeGet(ACCESS_KEY)
+    return accessToken
   },
-  getRefresh(): string | null {
-    return safeGet(REFRESH_KEY)
-  },
-  set(tokens: { access: string; refresh: string }): void {
-    safeSet(ACCESS_KEY, tokens.access)
-    safeSet(REFRESH_KEY, tokens.refresh)
+  setAccess(token: string): void {
+    accessToken = token
   },
   clear(): void {
-    safeRemove(ACCESS_KEY)
-    safeRemove(REFRESH_KEY)
+    accessToken = null
   },
 }

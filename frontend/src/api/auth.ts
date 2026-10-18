@@ -23,11 +23,7 @@ export const authApi = {
     const result = await apiRequest<{ user: User }>('/auth/me')
     return result.user
   },
-  logout(refreshToken: string) {
-    return apiRequest<{ success: true }>('/auth/logout', {
-      method: 'POST',
-      body: { refreshToken },
-      auth: false,
-    })
+  logout() {
+    return apiRequest<{ success: true }>('/auth/logout', { method: 'POST', auth: false })
   },
 }
