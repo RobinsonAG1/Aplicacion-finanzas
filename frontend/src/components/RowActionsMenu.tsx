@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export type RowAction = {
@@ -10,8 +10,23 @@ export type RowAction = {
 
 const MENU_WIDTH = 190
 const MENU_GAP = 4
+const VIEWPORT_MARGIN = 8
 
 type MenuPosition = { top: number; left: number }
+
+function computePosition(rect: DOMRect, height: number): MenuPosition {
+  let top = rect.bottom + MENU_GAP
+  const fitsAbove =
+    rect.top - MENU_GAP - height >= VIEWPORT_MARGIN
+  if (top + height > window.innerHeight - VIEWPORT_MARGIN && fitsAbove) {
+    top = rect.top - height - MENU_GAP
+  }
+  const left = Math.max(
+    VIEWPORT_MARGIN,
+    Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - VIEWPORT_MARGIN),
+  )
+  return { top, left }
+}
 
 type RowActionsMenuProps = {
   actions: RowAction[]
@@ -26,6 +41,7 @@ export function RowActionsMenu({
   const [position, setPosition] = useState<MenuPosition>({ top: 0, left: 0 })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const rectRef = useRef<DOMRect | null>(null)
 
   function toggle() {
     if (open) {
@@ -36,15 +52,22 @@ export function RowActionsMenu({
     const trigger = triggerRef.current
     if (trigger) {
       const rect = trigger.getBoundingClientRect()
-      const maxLeft = window.innerWidth - MENU_WIDTH - 8
-      setPosition({
-        top: rect.bottom + MENU_GAP,
-        left: Math.max(8, Math.min(rect.right - MENU_WIDTH, maxLeft)),
-      })
+      rectRef.current = rect
+      setPosition(computePosition(rect, 0))
     }
 
     setOpen(true)
   }
+
+  useLayoutEffect(() => {
+    if (!open) return
+
+    const menu = menuRef.current
+    const rect = rectRef.current
+    if (!menu || !rect) return
+
+    setPosition(computePosition(rect, menu.getBoundingClientRect().height))
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -93,7 +116,17 @@ export function RowActionsMenu({
     function handleViewportChange(event: Event) {
       const target = event.target
       if (target instanceof Node && menuRef.current?.contains(target)) return
-      setOpen(false)
+
+      const trigger = triggerRef.current
+      const menu = menuRef.current
+      if (!trigger || !menu) {
+        setOpen(false)
+        return
+      }
+
+      const rect = trigger.getBoundingClientRect()
+      rectRef.current = rect
+      setPosition(computePosition(rect, menu.getBoundingClientRect().height))
     }
 
     document.addEventListener('keydown', handleKeyDown)

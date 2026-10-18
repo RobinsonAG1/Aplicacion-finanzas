@@ -44,4 +44,13 @@ describe('RowActionsMenu', () => {
 
     expect(screen.queryByRole('menu')).toBeNull()
   })
+
+  it('mantiene el menu abierto al redimensionar la ventana', () => {
+    render(<RowActionsMenu actions={[{ label: 'Editar', onSelect: vi.fn() }]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Más acciones' }))
+    fireEvent(window, new Event('resize'))
+
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
 })
