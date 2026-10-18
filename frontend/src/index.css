@@ -397,14 +397,6 @@ h3 {
 }
 
 /* Paneles y tablas ------------------------------------------------------- */
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
-  gap: 1.25rem;
-  align-items: start;
-  margin-top: 1.25rem;
-}
-
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -892,12 +884,6 @@ input[type='color'] {
 /* Adaptabilidad ---------------------------------------------------------- */
 @media (max-width: 900px) {
   .charts {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 820px) {
-  .split {
     grid-template-columns: 1fr;
   }
 }
