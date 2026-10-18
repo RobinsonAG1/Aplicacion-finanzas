@@ -5,6 +5,8 @@ import { categoriesApi } from '../api/categories'
 import { transactionsApi } from '../api/transactions'
 import type { ImportSummary, TransactionInput, TransactionQuery } from '../api/transactions'
 import type { Category, Transaction, TransactionType } from '../api/types'
+import { Drawer } from '../components/Drawer'
+import { RowActionsMenu } from '../components/RowActionsMenu'
 import { TransactionForm } from '../features/transactions/TransactionForm'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatDate } from '../lib/dates'
@@ -81,6 +83,11 @@ export function TransactionsPage() {
     setFormOpen(true)
   }
 
+  function closeForm(): void {
+    setFormOpen(false)
+    setFormInitial(null)
+  }
+
   async function handleFormSubmit(input: TransactionInput): Promise<void> {
     setSaving(true)
     setFormError(null)
@@ -91,8 +98,7 @@ export function TransactionsPage() {
         await transactionsApi.create(input)
         setPage(1)
       }
-      setFormOpen(false)
-      setFormInitial(null)
+      closeForm()
       await reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'No se pudo guardar la transacción')
@@ -107,10 +113,7 @@ export function TransactionsPage() {
     setActionError(null)
     try {
       await transactionsApi.remove(transaction.id)
-      if (formInitial?.id === transaction.id) {
-        setFormOpen(false)
-        setFormInitial(null)
-      }
+      if (formInitial?.id === transaction.id) closeForm()
       await reload()
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'No se pudo eliminar la transacción')
@@ -178,7 +181,7 @@ export function TransactionsPage() {
           <h1>Transacciones</h1>
           <p className="muted">Registra, filtra y categoriza tus movimientos.</p>
         </div>
-        <div className="actions">
+        <div className="page-actions">
           <button type="button" className="btn" onClick={() => void handleExport()}>
             Exportar CSV
           </button>
@@ -284,132 +287,129 @@ export function TransactionsPage() {
         </button>
       </div>
 
-      <div className="split">
-        <div className="panel">
-          {loading && <p className="muted">Cargando…</p>}
-          {error && <p className="alert">{error}</p>}
-          {!loading && !error && transactions.length === 0 && (
-            <p className="muted">No hay transacciones para los filtros seleccionados.</p>
-          )}
-          {transactions.length > 0 && (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Comercio</th>
-                  <th>Categoría</th>
-                  <th>Cuenta</th>
-                  <th className="right">Monto</th>
-                  <th />
+      <div className="panel">
+        {loading && <p className="muted">Cargando…</p>}
+        {error && <p className="alert">{error}</p>}
+        {!loading && !error && transactions.length === 0 && (
+          <p className="muted">No hay transacciones para los filtros seleccionados.</p>
+        )}
+        {transactions.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Comercio</th>
+                <th>Categoría</th>
+                <th>Cuenta</th>
+                <th className="right">Monto</th>
+                <th className="cell-actions">
+                  <span className="sr-only">Acciones</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((transaction) => (
+                <tr key={transaction.id}>
+                  <td>{formatDate(transaction.date)}</td>
+                  <td>
+                    <div>{transaction.merchant ?? '—'}</div>
+                    {transaction.description && (
+                      <div className="muted small">{transaction.description}</div>
+                    )}
+                  </td>
+                  <td>
+                    {transaction.type === 'TRANSFER' ? (
+                      <span className="muted small">Transferencia</span>
+                    ) : (
+                      <span className="category-cell">
+                        {transaction.category && (
+                          <span
+                            className="color-dot"
+                            style={{ backgroundColor: transaction.category.color }}
+                          />
+                        )}
+                        <select
+                          aria-label="Categoría"
+                          value={transaction.categoryId ?? ''}
+                          onChange={(event) => void handleCategorize(transaction, event.target.value)}
+                        >
+                          <option value="">Sin categoría</option>
+                          {categoriesFor(categories ?? [], transaction.type).map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                    )}
+                  </td>
+                  <td>{transaction.account?.name ?? '—'}</td>
+                  <td
+                    className={
+                      transaction.type === 'INCOME' ? 'right amount-income' : 'right amount-expense'
+                    }
+                  >
+                    {signedAmount(transaction)}
+                  </td>
+                  <td className="cell-actions">
+                    <RowActionsMenu
+                      actions={[
+                        { label: 'Editar', onSelect: () => openEdit(transaction) },
+                        {
+                          label: 'Eliminar',
+                          onSelect: () => void handleDelete(transaction),
+                          danger: true,
+                        },
+                      ]}
+                    />
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {transactions.map((transaction) => (
-                  <tr key={transaction.id}>
-                    <td>{formatDate(transaction.date)}</td>
-                    <td>
-                      <div>{transaction.merchant ?? '—'}</div>
-                      {transaction.description && (
-                        <div className="muted small">{transaction.description}</div>
-                      )}
-                    </td>
-                    <td>
-                      {transaction.type === 'TRANSFER' ? (
-                        <span className="muted small">Transferencia</span>
-                      ) : (
-                        <span className="category-cell">
-                          {transaction.category && (
-                            <span
-                              className="color-dot"
-                              style={{ backgroundColor: transaction.category.color }}
-                            />
-                          )}
-                          <select
-                            aria-label="Categoría"
-                            value={transaction.categoryId ?? ''}
-                            onChange={(event) => void handleCategorize(transaction, event.target.value)}
-                          >
-                            <option value="">Sin categoría</option>
-                            {categoriesFor(categories ?? [], transaction.type).map((category) => (
-                              <option key={category.id} value={category.id}>
-                                {category.name}
-                              </option>
-                            ))}
-                          </select>
-                        </span>
-                      )}
-                    </td>
-                    <td>{transaction.account?.name ?? '—'}</td>
-                    <td
-                      className={
-                        transaction.type === 'INCOME' ? 'right amount-income' : 'right amount-expense'
-                      }
-                    >
-                      {signedAmount(transaction)}
-                    </td>
-                    <td className="actions">
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() => openEdit(transaction)}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-danger"
-                        onClick={() => void handleDelete(transaction)}
-                      >
-                        Eliminar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+              ))}
+            </tbody>
+          </table>
+        )}
 
-          {meta && meta.totalPages > 1 && (
-            <div className="pagination">
-              <button
-                type="button"
-                className="btn btn-sm"
-                disabled={page <= 1}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-              >
-                Anterior
-              </button>
-              <span className="muted small">
-                Página {meta.page} de {meta.totalPages} · {meta.total} movimientos
-              </span>
-              <button
-                type="button"
-                className="btn btn-sm"
-                disabled={page >= meta.totalPages}
-                onClick={() => setPage((current) => current + 1)}
-              >
-                Siguiente
-              </button>
-            </div>
-          )}
-        </div>
-
-        {formOpen && (
-          <TransactionForm
-            key={formInitial?.id ?? 'new'}
-            accounts={accounts ?? []}
-            categories={categories ?? []}
-            initial={formInitial}
-            saving={saving}
-            error={formError}
-            onSubmit={(input) => void handleFormSubmit(input)}
-            onCancel={() => {
-              setFormOpen(false)
-              setFormInitial(null)
-            }}
-          />
+        {meta && meta.totalPages > 1 && (
+          <div className="pagination">
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Anterior
+            </button>
+            <span className="muted small">
+              Página {meta.page} de {meta.totalPages} · {meta.total} movimientos
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={page >= meta.totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Siguiente
+            </button>
+          </div>
         )}
       </div>
+
+      <Drawer
+        open={formOpen}
+        onClose={closeForm}
+        label={formInitial ? 'Editar transacción' : 'Nueva transacción'}
+      >
+        <TransactionForm
+          key={formInitial?.id ?? 'new'}
+          accounts={accounts ?? []}
+          categories={categories ?? []}
+          initial={formInitial}
+          saving={saving}
+          error={formError}
+          onSubmit={(input) => void handleFormSubmit(input)}
+          onCancel={closeForm}
+        />
+      </Drawer>
     </section>
   )
 }
