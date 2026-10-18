@@ -94,6 +94,22 @@ describe('Autenticacion', () => {
     expect(reuse.status).toBe(401);
   });
 
+  it('revoca toda la familia al detectar reuso de un refresh rotado', async () => {
+    const reg = await register();
+    const first = reg.body.refreshToken as string;
+
+    const rotated = await request(app).post('/api/auth/refresh').send({ refreshToken: first });
+    expect(rotated.status).toBe(200);
+    const second = rotated.body.refreshToken as string;
+    expect(second).not.toBe(first);
+
+    const reuse = await request(app).post('/api/auth/refresh').send({ refreshToken: first });
+    expect(reuse.status).toBe(401);
+
+    const afterReuse = await request(app).post('/api/auth/refresh').send({ refreshToken: second });
+    expect(afterReuse.status).toBe(401);
+  });
+
   it('cierra sesion y luego el refresh deja de funcionar', async () => {
     const reg = await register();
     const refreshToken = reg.body.refreshToken as string;

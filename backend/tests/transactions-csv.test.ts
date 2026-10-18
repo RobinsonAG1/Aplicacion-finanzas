@@ -146,4 +146,54 @@ describe('Transacciones CSV', () => {
       .send('');
     expect(res.status).toBe(400);
   });
+
+  it('neutraliza formulas al exportar CSV', async () => {
+    const user = await createTestUser(app);
+    const account = await createAccount(app, user, { name: 'Ahorros' });
+    await createTransaction(app, user, {
+      accountId: account.id,
+      amount: 1000,
+      type: 'EXPENSE',
+      merchant: '=SUM(1+1)',
+      description: '@peligro',
+      date: '2026-10-05',
+    });
+
+    const res = await request(app).get('/api/transactions/export.csv').set(...authHeader(user));
+    expect(res.status).toBe(200);
+    expect(res.text).toContain("'=SUM(1+1)");
+    expect(res.text).toContain("'@peligro");
+  });
+
+  it('rechaza campos demasiado largos en la importacion', async () => {
+    const user = await createTestUser(app);
+    await createAccount(app, user, { name: 'Ahorros' });
+    const longField = 'x'.repeat(2001);
+    const csv = HEADER + `2026-10-05,gasto,10000,Ahorros,,,${longField}\r\n`;
+
+    const res = await request(app)
+      .post('/api/transactions/import')
+      .set(...authHeader(user))
+      .set('Content-Type', 'text/csv')
+      .send(csv);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.imported).toBe(0);
+    expect(res.body.data.errors[0].message).toBe('campo demasiado largo');
+  });
+
+  it('rechaza un CSV con demasiadas filas', async () => {
+    const user = await createTestUser(app);
+    await createAccount(app, user, { name: 'Ahorros' });
+    const rows = Array.from({ length: 5001 }, () => '2026-10-05,gasto,1000,Ahorros,,,').join('\r\n');
+
+    const res = await request(app)
+      .post('/api/transactions/import')
+      .set(...authHeader(user))
+      .set('Content-Type', 'text/csv')
+      .send(HEADER + rows + '\r\n');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CSV_TOO_MANY_ROWS');
+  });
 });

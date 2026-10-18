@@ -261,4 +261,56 @@ describe('Transacciones', () => {
     const listB = await request(app).get('/api/transactions').set(...authHeader(userB));
     expect(listB.body.data).toHaveLength(0);
   });
+
+  it('rechaza crear con cuenta o categoria ajena (404)', async () => {
+    const userA = await createTestUser(app);
+    const userB = await createTestUser(app);
+    const accountA = await createAccount(app, userA);
+    const categoryA = await createCategory(app, userA, { name: 'Ajena' });
+    const accountB = await createAccount(app, userB);
+
+    const foreignAccount = await request(app)
+      .post('/api/transactions')
+      .set(...authHeader(userB))
+      .send({ accountId: accountA.id, amount: 10, type: 'EXPENSE', date: '2026-10-05' });
+    expect(foreignAccount.status).toBe(404);
+
+    const foreignCategory = await request(app)
+      .post('/api/transactions')
+      .set(...authHeader(userB))
+      .send({
+        accountId: accountB.id,
+        categoryId: categoryA.id,
+        amount: 10,
+        type: 'EXPENSE',
+        date: '2026-10-05',
+      });
+    expect(foreignCategory.status).toBe(404);
+  });
+
+  it('rechaza actualizar hacia cuenta o categoria ajena (404)', async () => {
+    const userA = await createTestUser(app);
+    const userB = await createTestUser(app);
+    const accountA = await createAccount(app, userA);
+    const categoryA = await createCategory(app, userA, { name: 'Ajena' });
+    const accountB = await createAccount(app, userB);
+    const tx = await createTransaction(app, userB, {
+      accountId: accountB.id,
+      amount: 1000,
+      type: 'EXPENSE',
+      date: '2026-10-05',
+    });
+
+    const toForeignAccount = await request(app)
+      .put(`/api/transactions/${tx.id as string}`)
+      .set(...authHeader(userB))
+      .send({ accountId: accountA.id });
+    expect(toForeignAccount.status).toBe(404);
+
+    const toForeignCategory = await request(app)
+      .patch(`/api/transactions/${tx.id as string}/category`)
+      .set(...authHeader(userB))
+      .send({ categoryId: categoryA.id });
+    expect(toForeignCategory.status).toBe(404);
+  });
 });
