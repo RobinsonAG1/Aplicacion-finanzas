@@ -82,7 +82,7 @@ export function Drawer({ open, onClose, label, children }: DrawerProps) {
   if (!open) return null
 
   return createPortal(
-    <div className="drawer-layer">
+    <>
       <div
         className="drawer-backdrop"
         data-testid="drawer-backdrop"
@@ -121,7 +121,7 @@ export function Drawer({ open, onClose, label, children }: DrawerProps) {
         </button>
         <div className="drawer-body">{children}</div>
       </div>
-    </div>,
+    </>,
     document.body,
   )
 }

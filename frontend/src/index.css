@@ -320,15 +320,6 @@ h3 {
   cursor: not-allowed;
 }
 
-.btn-danger {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.btn-danger:hover {
-  background: var(--danger-soft);
-}
-
 .btn-sm {
   padding: 0.3rem 0.55rem;
   font-size: 0.78rem;
@@ -448,12 +439,6 @@ h3 {
 
 .data-table tr:last-child td {
   border-bottom: none;
-}
-
-.actions {
-  display: flex;
-  gap: 0.4rem;
-  justify-content: flex-end;
 }
 
 .color-dot {
@@ -756,10 +741,6 @@ input[type='color'] {
 }
 
 /* Drawer y menú de acciones ---------------------------------------------- */
-.drawer-layer {
-  position: relative;
-}
-
 .drawer-backdrop {
   position: fixed;
   inset: 0;
