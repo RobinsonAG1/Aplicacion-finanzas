@@ -11,7 +11,7 @@ import { TransactionForm } from '../features/transactions/TransactionForm'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatDate } from '../lib/dates'
 import { errorMessage } from '../lib/errors'
-import { formatCOP } from '../lib/formatCOP'
+import { formatSignedCOP } from '../lib/formatCOP'
 import { TRANSACTION_TYPE_LABELS } from '../lib/labels'
 
 const TRANSACTION_TYPES: TransactionType[] = ['EXPENSE', 'INCOME', 'TRANSFER']
@@ -168,11 +168,6 @@ export function TransactionsPage() {
     } finally {
       setImporting(false)
     }
-  }
-
-  function signedAmount(transaction: Transaction): string {
-    const value = Number(transaction.amount)
-    return formatCOP(transaction.type === 'INCOME' ? value : -value)
   }
 
   return (
@@ -350,7 +345,7 @@ export function TransactionsPage() {
                       transaction.type === 'INCOME' ? 'right amount-income' : 'right amount-expense'
                     }
                   >
-                    {signedAmount(transaction)}
+                    {formatSignedCOP(transaction.amount, transaction.type === 'INCOME')}
                   </td>
                   <td className="cell-actions">
                     <RowActionsMenu

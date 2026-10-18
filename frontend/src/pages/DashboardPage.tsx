@@ -5,16 +5,10 @@ import { billsApi } from '../api/bills'
 import { budgetsApi } from '../api/budgets'
 import { potsApi } from '../api/pots'
 import { transactionsApi } from '../api/transactions'
-import type { Transaction } from '../api/types'
 import { useAuth } from '../features/auth/useAuth'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatDate } from '../lib/dates'
-import { formatCOP, formatPercent } from '../lib/formatCOP'
-
-function signedAmount(transaction: Transaction): string {
-  const value = Number(transaction.amount)
-  return formatCOP(transaction.type === 'INCOME' ? value : -value)
-}
+import { formatCOP, formatPercent, formatSignedCOP } from '../lib/formatCOP'
 
 export function DashboardPage() {
   const { user } = useAuth()
@@ -184,7 +178,7 @@ export function DashboardPage() {
                   <span
                     className={transaction.type === 'INCOME' ? 'amount-income' : 'amount-expense'}
                   >
-                    {signedAmount(transaction)}
+                    {formatSignedCOP(transaction.amount, transaction.type === 'INCOME')}
                   </span>
                 </li>
               ))}

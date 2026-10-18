@@ -15,6 +15,11 @@ export function formatCOP(
   }).format(safe)
 }
 
+export function formatSignedCOP(amount: number | string, isIncome: boolean): string {
+  const value = typeof amount === 'string' ? Number(amount) : amount
+  return formatCOP(isIncome ? value : -value)
+}
+
 export function formatNumber(value: number | string, decimals = 0): string {
   const num = typeof value === 'string' ? Number(value) : value
   return new Intl.NumberFormat('es-CO', {
