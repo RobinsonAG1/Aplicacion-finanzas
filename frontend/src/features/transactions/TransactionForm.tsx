@@ -5,9 +5,7 @@ import type { Suggestion, TransactionInput } from '../../api/transactions'
 import type { Account, Category, Transaction, TransactionType } from '../../api/types'
 import { categoriesByType } from '../../lib/categories'
 import { toDateInputValue } from '../../lib/dates'
-import { TRANSACTION_TYPE_LABELS } from '../../lib/labels'
-
-const TRANSACTION_TYPES: TransactionType[] = ['EXPENSE', 'INCOME', 'TRANSFER']
+import { TRANSACTION_TYPE_LABELS, TRANSACTION_TYPES } from '../../lib/labels'
 
 interface TransactionFormProps {
   accounts: Account[]

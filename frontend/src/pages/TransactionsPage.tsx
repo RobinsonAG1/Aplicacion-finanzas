@@ -13,9 +13,7 @@ import { categoriesByType } from '../lib/categories'
 import { formatDate } from '../lib/dates'
 import { errorMessage } from '../lib/errors'
 import { formatSignedCOP } from '../lib/formatCOP'
-import { TRANSACTION_TYPE_LABELS } from '../lib/labels'
-
-const TRANSACTION_TYPES: TransactionType[] = ['EXPENSE', 'INCOME', 'TRANSFER']
+import { TRANSACTION_TYPE_LABELS, TRANSACTION_TYPES } from '../lib/labels'
 
 export function TransactionsPage() {
   const [page, setPage] = useState(1)

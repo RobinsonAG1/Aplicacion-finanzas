@@ -9,6 +9,7 @@ import { useAuth } from '../features/auth/useAuth'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { formatDate } from '../lib/dates'
 import { formatCOP, formatPercent, formatSignedCOP } from '../lib/formatCOP'
+import { progressFillClass } from '../lib/progress'
 
 export function DashboardPage() {
   const { user } = useAuth()
@@ -109,13 +110,7 @@ export function DashboardPage() {
                     </div>
                     <div className="progress">
                       <div
-                        className={
-                          budget.exceeded
-                            ? 'progress-fill danger'
-                            : budget.percentage >= 80
-                              ? 'progress-fill warn'
-                              : 'progress-fill'
-                        }
+                        className={progressFillClass(budget.percentage, budget.exceeded)}
                         style={{ width: `${Math.min(100, budget.percentage)}%` }}
                       />
                     </div>

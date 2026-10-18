@@ -12,6 +12,7 @@ import { endOfMonthInput, formatDate, startOfMonthInput, toDateInputValue } from
 import { errorMessage } from '../lib/errors'
 import { formatCOP } from '../lib/formatCOP'
 import { BUDGET_PERIOD_LABELS, BUDGET_PERIODS } from '../lib/labels'
+import { progressFillClass } from '../lib/progress'
 
 interface FormState {
   id?: string
@@ -30,12 +31,6 @@ function emptyForm(): FormState {
     startDate: toDateInputValue(new Date()),
     endDate: '',
   }
-}
-
-function progressClass(summary: BudgetSummary): string {
-  if (summary.exceeded) return 'progress-fill danger'
-  if (summary.percentage >= 80) return 'progress-fill warn'
-  return 'progress-fill'
 }
 
 export function BudgetsPage() {
@@ -205,7 +200,7 @@ export function BudgetsPage() {
               </div>
               <div className="progress">
                 <div
-                  className={progressClass(summary)}
+                  className={progressFillClass(summary.percentage, summary.exceeded)}
                   style={{ width: `${Math.min(100, summary.percentage)}%` }}
                 />
               </div>
