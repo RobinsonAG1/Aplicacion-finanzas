@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AppError } from '../utils/AppError.js';
+import { logger } from '../config/logger.js';
 import { hashPassword, verifyPassword } from '../utils/password.js';
 import {
   hashToken,
@@ -79,15 +80,27 @@ export const authService = {
 
   async refresh(refreshToken: string, ctx: TokenContext): Promise<AuthResult> {
     const payload = await verifyRefreshToken(refreshToken);
-    const stored = await refreshTokenRepository.findActiveByHash(hashToken(refreshToken));
-    if (
-      !stored ||
-      stored.revokedAt ||
-      stored.expiresAt < new Date() ||
-      stored.userId !== payload.sub
-    ) {
+    const stored = await refreshTokenRepository.findByHash(hashToken(refreshToken));
+    if (!stored) {
       throw new AppError('Refresh token invalido', 401, { code: 'INVALID_REFRESH_TOKEN' });
     }
+
+    // El token existe pero pertenece a otro usuario: firma manipulada o token filtrado.
+    if (stored.userId !== payload.sub) {
+      await refreshTokenRepository.revokeAllForUser(stored.userId);
+      throw new AppError('Refresh token invalido', 401, { code: 'INVALID_REFRESH_TOKEN' });
+    }
+
+    // Ya rotado, revocado o expirado => reuso: se revoca toda la familia del usuario.
+    if (stored.revokedAt || stored.expiresAt < new Date()) {
+      logger.warn(
+        { userId: stored.userId, tokenId: stored.id },
+        'Reuso de refresh token detectado, revocando todas las sesiones del usuario',
+      );
+      await refreshTokenRepository.revokeAllForUser(stored.userId);
+      throw new AppError('Refresh token invalido', 401, { code: 'INVALID_REFRESH_TOKEN' });
+    }
+
     await refreshTokenRepository.revoke(stored.id);
     const user = await userRepository.findById(payload.sub);
     if (!user) {
@@ -98,7 +111,7 @@ export const authService = {
   },
 
   async logout(refreshToken: string): Promise<{ success: true }> {
-    const stored = await refreshTokenRepository.findActiveByHash(hashToken(refreshToken));
+    const stored = await refreshTokenRepository.findByHash(hashToken(refreshToken));
     if (stored && !stored.revokedAt) {
       await refreshTokenRepository.revoke(stored.id);
     }

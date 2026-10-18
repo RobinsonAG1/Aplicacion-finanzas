@@ -10,7 +10,7 @@ export const refreshTokenRepository = {
   }) {
     return prisma.refreshToken.create({ data });
   },
-  findActiveByHash(tokenHash: string) {
+  findByHash(tokenHash: string) {
     return prisma.refreshToken.findUnique({ where: { tokenHash } });
   },
   revoke(id: string) {
