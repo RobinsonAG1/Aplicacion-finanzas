@@ -205,7 +205,7 @@ export function BudgetsPage() {
                 />
               </div>
               <div className="budget-foot">
-                <span className={`small ${summary.exceeded ? 'amount-expense' : 'muted'}`}>
+                <span className={`small ${summary.exceeded ? 'amount-danger' : 'muted'}`}>
                   {summary.exceeded
                     ? `Excedido en ${formatCOP(Math.abs(summary.remaining))}`
                     : `Disponible ${formatCOP(summary.remaining)}`}

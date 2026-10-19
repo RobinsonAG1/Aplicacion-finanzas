@@ -242,7 +242,7 @@ export function BillsPage() {
                   </td>
                   <td>
                     <div>{formatDate(bill.nextDueDate)}</div>
-                    <div className={`small ${bill.overdue ? 'amount-expense' : 'muted'}`}>
+                    <div className={`small ${bill.overdue ? 'amount-danger' : 'muted'}`}>
                       {bill.overdue ? 'Vencida' : `en ${bill.daysUntil} d`}
                     </div>
                   </td>

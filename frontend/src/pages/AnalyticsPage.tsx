@@ -109,7 +109,7 @@ export function AnalyticsPage() {
           <span className="card-label">Gastos</span>
           <span className="card-value amount-expense">{formatCOP(totals?.expense ?? 0)}</span>
         </article>
-        <article className="card">
+        <article className="card card-hero">
           <span className="card-label">Balance neto</span>
           <span className="card-value">{formatCOP(totals?.net ?? 0)}</span>
         </article>

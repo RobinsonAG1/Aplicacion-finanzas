@@ -45,7 +45,7 @@ export function DashboardPage() {
           <span className="card-label">Gastos</span>
           <span className="card-value amount-expense">{formatCOP(totals?.expense ?? 0)}</span>
         </article>
-        <article className="card">
+        <article className="card card-hero">
           <span className="card-label">Balance neto</span>
           <span className="card-value">{formatCOP(totals?.net ?? 0)}</span>
         </article>
@@ -70,7 +70,7 @@ export function DashboardPage() {
               {upcoming.data.upcoming.slice(0, 5).map((bill) => (
                 <li key={bill.id} className="movement">
                   <span>{bill.name}</span>
-                  <span className={`small ${bill.overdue ? 'amount-expense' : 'muted'}`}>
+                  <span className={`small ${bill.overdue ? 'amount-danger' : 'muted'}`}>
                     {bill.overdue ? 'Vencida' : formatDate(bill.dueDate)}
                   </span>
                   <span className="right">{formatCOP(bill.amount)}</span>
