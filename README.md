@@ -123,7 +123,7 @@ Todas las rutas viven bajo `/api`. Salvo `auth` y `health`, requieren
 | Categorias | `GET|POST /categories`, `GET|PUT|DELETE /categories/:id` |
 | Transacciones | `GET|POST /transactions`, `GET|PUT|DELETE /transactions/:id`, `PATCH /transactions/:id/category`, `GET /transactions/suggestions`, `GET /transactions/export.csv`, `POST /transactions/import` |
 | Presupuestos | `GET|POST /budgets`, `GET /budgets/overview`, `GET|PUT|DELETE /budgets/:id` |
-| Huchas | `GET|POST /pots`, `GET|PUT|DELETE /pots/:id`, `POST /pots/:id/deposit`, `POST /pots/:id/withdraw` |
+| Metas de ahorro | `GET|POST /pots`, `GET|PUT|DELETE /pots/:id`, `POST /pots/:id/deposit`, `POST /pots/:id/withdraw` |
 | Facturas | `GET|POST /bills`, `GET /bills/upcoming`, `POST /bills/reminders/run`, `GET|PUT|DELETE /bills/:id`, `GET|POST /bills/:id/reminders`, `POST /bills/:id/pay` |
 | Analitica | `GET /analytics/summary`, `GET /analytics/monthly`, `GET /analytics/category-trends`, `GET /analytics/balance-timeline` |
 
@@ -153,8 +153,8 @@ La lista de transacciones soporta paginacion, busqueda, orden y filtros:
 - [x] Modelo de datos y migraciones
 - [x] Autenticacion JWT
 - [x] Cuentas, categorias y transacciones (CRUD, filtros, CSV)
-- [x] Presupuestos, huchas, facturas y recordatorios (stub)
+- [x] Presupuestos, metas de ahorro, facturas y recordatorios (stub)
 - [x] Analitica con window functions
-- [x] Frontend React + Recharts (dashboard, cuentas, categorias, transacciones, presupuestos, huchas, facturas, analitica)
+- [x] Frontend React + Recharts (dashboard, cuentas, categorias, transacciones, presupuestos, metas de ahorro, facturas, analitica)
 - [x] Integracion continua (GitHub Actions)
 - [ ] Despliegue continuo

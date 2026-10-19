@@ -40,7 +40,7 @@ HTTP**:
 
 - **`backend/`** — API REST en Express 5 + TypeScript ESM, PostgreSQL y Prisma 7. Cubre
   autenticación, cuentas, categorías, transacciones (con importación/exportación CSV),
-  presupuestos, huchas de ahorro, facturas recurrentes con recordatorios y analítica con
+  presupuestos, metas de ahorro, facturas recurrentes con recordatorios y analítica con
   window functions de SQL.
 - **`frontend/`** — SPA en React 19 + Vite + TypeScript, con React Router 7 y Recharts.
   Servida por nginx en producción (que además proxya `/api` al backend).
@@ -54,7 +54,7 @@ HTTP**:
 | Categorías | CRUD con color, tipo (ingreso/gasto) y reglas de unicidad por tipo |
 | Transacciones | CRUD, filtros, búsqueda, paginación, orden, sugerencia de categoría, CSV import/export |
 | Presupuestos | Límites por categoría de gasto, cálculo de gasto/avance por ventana temporal |
-| Huchas | Metas de ahorro con depósitos/retiros e historial |
+| Metas de ahorro | Objetivos con depósitos/retiros e historial |
 | Facturas | Recurrentes por día de vencimiento, pago que genera gasto, recordatorios (stub) |
 | Analítica | Resumen, serie mensual, tendencias por categoría y evolución de saldo |
 | Empaquetado | Dockerfiles (backend + nginx), `docker-compose.yml`, entrypoint con migraciones |
@@ -91,7 +91,7 @@ presupuestos?, ¿cuánto he ahorrado para una meta?, ¿qué facturas vencen pron
   una cuenta y, opcionalmente, a una categoría.
 - **Categoría (`Category`)**: clasificación de ingresos o gastos con color.
 - **Presupuesto (`Budget`)**: límite de gasto para una categoría en un periodo.
-- **Hucha (`Pot`)**: meta de ahorro con saldo aparte del saldo de cuentas.
+- **Meta de ahorro (`Pot`)**: objetivo de ahorro con saldo aparte del saldo de cuentas.
 - **Factura (`RecurringBill`)**: gasto recurrente por día del mes.
 - **Recordatorio (`BillReminder`)**: aviso generado para el vencimiento de una factura.
 - **Ventana (`window`)**: rango de fechas efectivo en que aplica un presupuesto.
@@ -386,9 +386,9 @@ erDiagram
 | GET/POST | `/api/budgets` | Sí | Listar / crear presupuestos |
 | GET | `/api/budgets/overview` | Sí | Avance de presupuestos |
 | GET/PUT/DELETE | `/api/budgets/:id` | Sí | Detalle / editar / borrar |
-| GET/POST | `/api/pots` | Sí | Listar / crear huchas |
+| GET/POST | `/api/pots` | Sí | Listar / crear metas de ahorro |
 | GET/PUT/DELETE | `/api/pots/:id` | Sí | Detalle / editar / borrar |
-| POST | `/api/pots/:id/deposit` \| `/withdraw` | Sí | Movimientos de hucha |
+| POST | `/api/pots/:id/deposit` \| `/withdraw` | Sí | Movimientos de metas de ahorro |
 | GET/POST | `/api/bills` | Sí | Listar / crear facturas |
 | GET | `/api/bills/upcoming` | Sí | Próximos vencimientos |
 | POST | `/api/bills/reminders/run` | Sí | Generar recordatorios en lote |
@@ -589,7 +589,7 @@ Respuesta de `overview`:
 
 Solo se presupuestan **categorías de gasto**; lo contrario → `422 BUDGET_INVALID_CATEGORY`.
 
-### 7.8 Huchas
+### 7.8 Metas de ahorro
 
 ```bash
 curl -X POST http://localhost:4000/api/pots \
@@ -605,8 +605,9 @@ curl -X POST http://localhost:4000/api/pots/$ID/withdraw \
   -d '{"amount":100000}'
 ```
 
-`GET /api/pots/:id?limit=20` devuelve la hucha con sus últimos movimientos. Retirar más del
-saldo → `422 POT_INSUFFICIENT_FUNDS`. Las huchas **no** alteran el saldo de las cuentas.
+`GET /api/pots/:id?limit=20` devuelve la meta con sus últimos movimientos. Retirar más del
+saldo → `422 POT_INSUFFICIENT_FUNDS`. Las metas de ahorro **no** alteran el saldo de las
+cuentas.
 
 ### 7.9 Facturas
 
@@ -687,13 +688,13 @@ Se valida propiedad de `accountId` y `categoryId` antes de operar (anti-IDOR).
 - Suma los gastos de la categoría dentro de esa ventana y calcula `spent`, `remaining`,
   `percentage` y `exceeded` (`spent > limit`).
 
-### 8.4 Huchas
+### 8.4 Metas de ahorro
 
 - `currentAmount` se mantiene con `increment`/`decrement` en una transacción atómica junto
   al registro del `PotTransaction`.
 - `withdraw` valida saldo suficiente (`POT_INSUFFICIENT_FUNDS`).
 - `percentage`, `remaining` y `completed` (`current >= target`) se calculan al serializar.
-- Las huchas son un bolsillo independiente: no afectan `Account.balance`.
+- Las metas de ahorro son un fondo independiente: no afectan `Account.balance`.
 
 ### 8.5 Facturas y recordatorios
 
@@ -787,7 +788,7 @@ paneles.
 
 | Ruta | Página | Contenido | APIs |
 |---|---|---|---|
-| `/` | `DashboardPage` | 4 cards (ingresos/gastos/neto/tasa) + 4 paneles (vencimientos, presupuestos, huchas, últimas transacciones) | `analytics.summary`, `bills.upcoming`, `budgets.overview`, `pots.list`, `transactions.list` |
+| `/` | `DashboardPage` | 4 cards (ingresos/gastos/neto/tasa) + 4 paneles (vencimientos, presupuestos, metas de ahorro, últimas transacciones) | `analytics.summary`, `bills.upcoming`, `budgets.overview`, `pots.list`, `transactions.list` |
 | `/transactions` | `TransactionsPage` | Tabla con filtros, búsqueda debounced (300 ms), orden, paginación, export/import CSV, categorización inline | `transactions.*`, `accounts.list`, `categories.list` |
 | `/budgets` | `BudgetsPage` | Rango de fechas, cards de totales, lista de barras de progreso, CRUD | `budgets.overview/list`, `categories.list` |
 | `/pots` | `PotsPage` | Tarjetas de progreso, CRUD, paneles de depósito/retiro | `pots.*` |
@@ -984,7 +985,7 @@ datos:
 - 6 cuentas (ahorros, efectivo, corriente, tarjeta de crédito, inversión).
 - 13 categorías (10 de gasto, 3 de ingreso).
 - ~198 transacciones (salario, intereses, freelance, gastos fijos y variables).
-- 6 presupuestos, 3 huchas, 8 facturas recurrentes con recordatorio.
+- 6 presupuestos, 3 metas de ahorro, 8 facturas recurrentes con recordatorio.
 - Saldos de cuenta recalculados como base + neto de transacciones.
 
 ```bash
@@ -1192,7 +1193,7 @@ cd frontend && npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && 
 - [x] Modelo de datos y migraciones
 - [x] Autenticación JWT (con rotación de refresh)
 - [x] Cuentas, categorías y transacciones (CRUD, filtros, CSV)
-- [x] Presupuestos, huchas, facturas y recordatorios (stub)
+- [x] Presupuestos, metas de ahorro, facturas y recordatorios (stub)
 - [x] Analítica con window functions
 - [x] Frontend React + Recharts
 - [x] Integración continua (GitHub Actions)
@@ -1238,7 +1239,7 @@ curl -s "$BASE/analytics/summary" -H "Authorization: Bearer $ACCESS"
 | `REMINDER_EXISTS` | 409 | Recordatorio duplicado |
 | `*_NOT_FOUND` | 404 | Recurso inexistente o ajeno |
 | `BUDGET_INVALID_CATEGORY` / `BILL_INVALID_CATEGORY` | 422 | Categoría no de gasto |
-| `POT_INSUFFICIENT_FUNDS` | 422 | Retiro mayor al saldo de la hucha |
+| `POT_INSUFFICIENT_FUNDS` | 422 | Retiro mayor al saldo de la meta de ahorro |
 | `CSV_EMPTY` / `CSV_MISSING_COLUMNS` / `CSV_REQUIRED` | 400 | Problemas de import |
 | `UNSUPPORTED_FILE` / `UPLOAD_ERROR` | 415 / 400 | Subida inválida |
 | `RATE_LIMITED` | 429 | Límite de peticiones superado |
@@ -1250,7 +1251,7 @@ curl -s "$BASE/analytics/summary" -H "Authorization: Bearer $ACCESS"
   recursos de otros usuarios (mitigación de enumeración).
 - **¿Transferir afecta el saldo?** Sí: `TRANSFER` resta saldo de la cuenta asociada, igual que
   un gasto (modelo simplificado; no hay doble asiento).
-- **¿Las huchas descuentan de las cuentas?** No; son bolsillos independientes.
+- **¿Las metas de ahorro descuentan de las cuentas?** No; son fondos independientes.
 - **¿Los recordatorios envían correos?** No; son *stubs* que registran en el log
   (`channel: LOG`).
 - **¿Por qué `GET /categories` no filtra por tipo?** El filtrado por tipo se hace en el
