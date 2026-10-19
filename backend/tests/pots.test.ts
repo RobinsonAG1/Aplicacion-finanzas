@@ -15,7 +15,7 @@ async function createPot(user: TestUser, payload: Record<string, unknown> = {}) 
   return res.body.data as Record<string, unknown>;
 }
 
-describe('Huchas de ahorro', () => {
+describe('Metas de ahorro', () => {
   beforeEach(async () => {
     await resetDatabase();
   });
@@ -24,7 +24,7 @@ describe('Huchas de ahorro', () => {
     await closeDatabase();
   });
 
-  it('crea una hucha con progreso inicial', async () => {
+  it('crea una meta con progreso inicial', async () => {
     const user = await createTestUser(app);
     const res = await request(app)
       .post('/api/pots')
@@ -105,7 +105,7 @@ describe('Huchas de ahorro', () => {
     expect(res.status).toBe(422);
   });
 
-  it('marca la hucha como completada al alcanzar la meta', async () => {
+  it('marca la meta como completada al alcanzar el objetivo', async () => {
     const user = await createTestUser(app);
     const pot = await createPot(user, { targetAmount: 50000 });
     const res = await request(app)
@@ -116,7 +116,7 @@ describe('Huchas de ahorro', () => {
     expect(res.body.data.percentage).toBe(100);
   });
 
-  it('actualiza y elimina una hucha', async () => {
+  it('actualiza y elimina una meta', async () => {
     const user = await createTestUser(app);
     const pot = await createPot(user);
 
@@ -133,7 +133,7 @@ describe('Huchas de ahorro', () => {
     expect(gone.status).toBe(404);
   });
 
-  it('aísla las huchas entre usuarios', async () => {
+  it('aísla las metas entre usuarios', async () => {
     const userA = await createTestUser(app);
     const userB = await createTestUser(app);
     const pot = await createPot(userA);

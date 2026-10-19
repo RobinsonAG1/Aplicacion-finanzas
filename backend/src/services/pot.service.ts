@@ -32,7 +32,7 @@ export interface PotSummary {
 }
 
 function notFound(): AppError {
-  return new AppError('Hucha no encontrada', 404, { code: 'POT_NOT_FOUND' });
+  return new AppError('Meta de ahorro no encontrada', 404, { code: 'POT_NOT_FOUND' });
 }
 
 function toSummary(pot: PotLike): PotSummary {
@@ -120,7 +120,7 @@ export const potService = {
     const existing = await potRepository.findOwned(id, userId);
     if (!existing) throw notFound();
     if (input.amount > existing.currentAmount.toNumber()) {
-      throw new AppError('Saldo insuficiente en la hucha', 422, {
+      throw new AppError('Saldo insuficiente en esta meta de ahorro', 422, {
         code: 'POT_INSUFFICIENT_FUNDS',
       });
     }

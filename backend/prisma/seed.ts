@@ -360,7 +360,7 @@ async function main(): Promise<void> {
     })),
   });
 
-  console.log('Creando huchas (pots)...');
+  console.log('Creando metas de ahorro (pots)...');
   const potDefs = [
     { name: 'Viaje a San Andrés', target: 2000000, deposits: [300000, 250000, 200000] },
     { name: 'Fondo de emergencia', target: 6000000, deposits: [800000, 600000, 400000] },
