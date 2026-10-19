@@ -1,7 +1,7 @@
 // Aplica el tema antes del primer pintado para evitar el destello (FOUC).
 // Es un archivo externo (no inline) porque la CSP usa script-src 'self'.
 // La clave debe coincidir con THEME_STORAGE_KEY en src/features/theme/theme-context.ts.
-;(function () {
+; (function () {
   var STORAGE_KEY = 'finanzas-theme'
   try {
     var stored = window.localStorage.getItem(STORAGE_KEY)
@@ -12,6 +12,8 @@
           ? 'dark'
           : 'light'
     document.documentElement.dataset.theme = theme
+    var meta = document.querySelector('meta[name="theme-color"]')
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#140d1c' : '#f7f5fa')
   } catch {
     document.documentElement.dataset.theme = 'light'
   }

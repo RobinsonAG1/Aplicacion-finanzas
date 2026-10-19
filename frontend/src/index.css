@@ -1395,6 +1395,34 @@ select option {
   }
 }
 
+@media (pointer: coarse) {
+  .btn,
+  .nav-link,
+  .action-menu-item,
+  .theme-option {
+    min-height: 44px;
+  }
+
+  .menu-trigger,
+  .drawer-close {
+    width: 40px;
+    height: 40px;
+  }
+
+  .action-menu-item {
+    padding: 0.65rem 0.7rem;
+  }
+
+  .drawer-close {
+    top: 0.7rem;
+    right: 0.7rem;
+  }
+
+  .drawer-body .panel-head {
+    padding-right: 2.75rem;
+  }
+}
+
 /* Movimiento ------------------------------------------------------------- */
 @keyframes drawer-in {
   from {
