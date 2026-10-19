@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { AuthLayout } from '../components/AuthLayout'
 import { useAuth } from '../features/auth/useAuth'
 import { errorMessage } from '../lib/errors'
 
@@ -30,11 +31,8 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="auth-screen">
-      <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Crear cuenta</h1>
-        <p className="muted">Empieza a registrar tus finanzas</p>
-
+    <AuthLayout title="Crear cuenta" subtitle="Crea tu cuenta para empezar a organizar tus finanzas">
+      <form className="auth-form" onSubmit={handleSubmit}>
         {error && <p className="alert">{error}</p>}
 
         <label className="field">
@@ -69,14 +67,14 @@ export function RegisterPage() {
           />
         </label>
 
-        <button type="submit" className="btn btn-primary" disabled={submitting}>
+        <button type="submit" className="btn btn-primary auth-submit" disabled={submitting}>
           {submitting ? 'Creando…' : 'Registrarme'}
         </button>
 
-        <p className="muted">
+        <p className="muted auth-switch">
           ¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link>
         </p>
       </form>
-    </div>
+    </AuthLayout>
   )
 }
