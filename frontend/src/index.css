@@ -63,15 +63,15 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --bg: #140d1c;
-  --surface: #1d1428;
-  --surface-2: #271b35;
-  --surface-3: #322442;
-  --border: #382a48;
-  --border-strong: #4e3d61;
+  --bg: #0f0f12;
+  --surface: #17171b;
+  --surface-2: #202025;
+  --surface-3: #29292f;
+  --border: #303036;
+  --border-strong: #45454e;
 
-  --text: #f3eef8;
-  --muted: #b4a8c2;
+  --text: #f2f0f4;
+  --muted: #aba8b3;
 
   --primary: #c79bff;
   --primary-hover: #d9bcff;
@@ -92,9 +92,9 @@
 
   --focus: #c79bff;
 
-  --hero-bg: #2b1740;
+  --hero-bg: #211b29;
   --hero-text: #f7f2fd;
-  --hero-muted: #c9b6e4;
+  --hero-muted: #c2b8ce;
   --hero-accent: #c79bff;
 
   --mark-bg: #a46bf5;
@@ -423,6 +423,12 @@ h3 {
 .theme-option.active {
   background: var(--primary);
   color: var(--primary-contrast);
+}
+
+:root[data-theme='dark'] .theme-option.active {
+  background: var(--primary-soft);
+  color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 .theme-option svg {
@@ -1192,7 +1198,7 @@ select option {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgba(20, 13, 28, 0.5);
+  background: rgba(10, 9, 12, 0.55);
 }
 
 .drawer {

@@ -13,7 +13,7 @@
           : 'light'
     document.documentElement.dataset.theme = theme
     var meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#140d1c' : '#f7f5fa')
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f0f12' : '#f7f5fa')
   } catch {
     document.documentElement.dataset.theme = 'light'
   }
