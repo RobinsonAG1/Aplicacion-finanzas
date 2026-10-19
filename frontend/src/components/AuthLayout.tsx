@@ -31,7 +31,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
 
         <ul className="auth-points">
           <li>Resumen de saldo y movimientos</li>
-          <li>Presupuestos y huchas de ahorro</li>
+          <li>Presupuestos y metas de ahorro</li>
           <li>Facturas y recordatorios de pago</li>
         </ul>
       </aside>

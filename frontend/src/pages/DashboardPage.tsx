@@ -123,12 +123,12 @@ export function DashboardPage() {
 
         <div className="panel">
           <div className="panel-head">
-            <h3 className="chart-title">Huchas</h3>
-            <Link to="/pots">Ver huchas</Link>
+            <h3 className="chart-title">Metas</h3>
+            <Link to="/pots">Ver metas</Link>
           </div>
           {pots.loading && <p className="muted small">Cargando…</p>}
           {pots.data && pots.data.length === 0 && (
-            <p className="muted small">Sin huchas creadas.</p>
+            <p className="muted small">Sin metas creadas.</p>
           )}
           {pots.data && pots.data.length > 0 && (
             <div className="budget-list">

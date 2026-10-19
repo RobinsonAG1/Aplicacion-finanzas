@@ -50,12 +50,13 @@ describe('PotsPage', () => {
 
     render(<PotsPage />)
 
+    expect(screen.getByRole('heading', { name: 'Metas de ahorro' })).toBeInTheDocument()
     expect(await screen.findByText('Vacaciones')).toBeInTheDocument()
     expect(screen.getByText('25.0%')).toBeInTheDocument()
     expect(screen.getByText(/Faltan/)).toBeInTheDocument()
   })
 
-  it('marca las huchas completadas', async () => {
+  it('marca las metas completadas', async () => {
     mockApi([{ ...POT, currentAmount: '1000000.00', remaining: 0, percentage: 100, completed: true }])
 
     render(<PotsPage />)
@@ -80,6 +81,6 @@ describe('PotsPage', () => {
 
     render(<PotsPage />)
 
-    expect(await screen.findByText('Aún no tienes huchas. Crea la primera.')).toBeInTheDocument()
+    expect(await screen.findByText('Aún no tienes metas de ahorro. Crea la primera.')).toBeInTheDocument()
   })
 })

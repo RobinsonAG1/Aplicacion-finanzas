@@ -90,14 +90,14 @@ export function PotsPage() {
       closeDrawer()
       await reload()
     } catch (err) {
-      setFormError(errorMessage(err, 'No se pudo guardar la hucha'))
+      setFormError(errorMessage(err, 'No se pudo guardar la meta'))
     } finally {
       setSaving(false)
     }
   }
 
   async function handleDelete(pot: Pot): Promise<void> {
-    if (!window.confirm(`¿Eliminar la hucha "${pot.name}"? Se borrará su historial.`)) return
+    if (!window.confirm(`¿Eliminar la meta "${pot.name}"? Se borrará su historial.`)) return
     setActionError(null)
     try {
       await potsApi.remove(pot.id)
@@ -105,7 +105,7 @@ export function PotsPage() {
       if (selectedPot?.id === pot.id) closeDrawer()
       await reload()
     } catch (err) {
-      setActionError(errorMessage(err, 'No se pudo eliminar la hucha'))
+      setActionError(errorMessage(err, 'No se pudo eliminar la meta'))
     }
   }
 
@@ -113,18 +113,18 @@ export function PotsPage() {
     mode === 'move' && selectedPot
       ? `Mover en ${selectedPot.name}`
       : editing
-        ? 'Editar hucha'
-        : 'Nueva hucha'
+        ? 'Editar meta'
+        : 'Nueva meta'
 
   return (
     <section className="page">
       <div className="page-head">
         <div>
-          <h1>Huchas de ahorro</h1>
-          <p className="muted">Aparta dinero hacia metas y sigue tu progreso.</p>
+          <h1>Metas de ahorro</h1>
+          <p className="muted">Aparta dinero hacia tus metas y sigue tu progreso.</p>
         </div>
         <button type="button" className="btn btn-primary" onClick={openCreate}>
-          Nueva hucha
+          Nueva meta
         </button>
       </div>
 
@@ -134,7 +134,7 @@ export function PotsPage() {
         {loading && <p className="muted">Cargando…</p>}
         {error && <p className="alert">{error}</p>}
         {!loading && !error && (pots ?? []).length === 0 && (
-          <p className="muted">Aún no tienes huchas. Crea la primera.</p>
+          <p className="muted">Aún no tienes metas de ahorro. Crea la primera.</p>
         )}
         <div className="budget-list">
           {(pots ?? []).map((pot) => (
@@ -205,7 +205,7 @@ export function PotsPage() {
           />
         ) : (
           <form className="panel form-panel" onSubmit={handleSubmit}>
-            <h2>{editing ? 'Editar hucha' : 'Nueva hucha'}</h2>
+            <h2>{editing ? 'Editar meta' : 'Nueva meta'}</h2>
             {formError && <p className="alert">{formError}</p>}
 
             <label className="field">
@@ -240,7 +240,7 @@ export function PotsPage() {
 
             <div className="form-actions">
               <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear hucha'}
+                {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear meta'}
               </button>
               <button type="button" className="btn" onClick={closeDrawer}>
                 Cancelar

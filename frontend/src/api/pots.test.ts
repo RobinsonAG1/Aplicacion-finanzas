@@ -10,7 +10,7 @@ afterEach(() => {
 })
 
 describe('potsApi', () => {
-  it('lista huchas y desenvuelve data', async () => {
+  it('lista metas y desenvuelve data', async () => {
     const fn = stubFetchResponse({ status: 200, body: { data: [{ id: 'p1', name: 'Vacaciones' }] } })
 
     const pots = await potsApi.list()
@@ -44,7 +44,7 @@ describe('potsApi', () => {
   it('propaga el error de fondos insuficientes al retirar', async () => {
     stubFetchResponse({
       status: 422,
-      body: { error: { message: 'Saldo insuficiente en la hucha', code: 'POT_INSUFFICIENT_FUNDS' } },
+      body: { error: { message: 'Saldo insuficiente en esta meta de ahorro', code: 'POT_INSUFFICIENT_FUNDS' } },
     })
 
     await expect(potsApi.withdraw('p1', { amount: 999999 })).rejects.toMatchObject({
@@ -55,7 +55,7 @@ describe('potsApi', () => {
     await expect(potsApi.withdraw('p1', { amount: 1 })).rejects.toBeInstanceOf(ApiError)
   })
 
-  it('elimina una hucha (204)', async () => {
+  it('elimina una meta (204)', async () => {
     const fn = stubFetchResponse({ status: 204 })
     await expect(potsApi.remove('p1')).resolves.toBeUndefined()
     expect(fn.mock.calls[0][1].method).toBe('DELETE')

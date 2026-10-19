@@ -74,7 +74,7 @@ const NAV_ITEMS: { to: string; label: string; end?: boolean; icon: NavIconName }
   { to: '/', label: 'Resumen', end: true, icon: 'home' },
   { to: '/transactions', label: 'Transacciones', icon: 'transactions' },
   { to: '/budgets', label: 'Presupuestos', icon: 'budgets' },
-  { to: '/pots', label: 'Huchas', icon: 'pots' },
+  { to: '/pots', label: 'Metas', icon: 'pots' },
   { to: '/bills', label: 'Facturas', icon: 'bills' },
   { to: '/analytics', label: 'Analítica', icon: 'analytics' },
   { to: '/accounts', label: 'Cuentas', icon: 'accounts' },
