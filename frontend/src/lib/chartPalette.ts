@@ -9,6 +9,7 @@ export interface ChartPalette {
   income: string
   expense: string
   line: string
+  others: string
   tooltipBg: string
   tooltipBorder: string
   tooltipText: string
@@ -16,23 +17,25 @@ export interface ChartPalette {
 
 export const CHART_PALETTES: Record<ResolvedTheme, ChartPalette> = {
   light: {
-    axis: '#6b6455',
-    grid: '#ddd7ca',
-    income: '#15683f',
-    expense: '#a33a24',
-    line: '#17614b',
-    tooltipBg: '#fffefb',
-    tooltipBorder: '#ddd7ca',
-    tooltipText: '#1c1a15',
+    axis: '#716879',
+    grid: '#e5dfec',
+    income: '#16803d',
+    expense: '#c62828',
+    line: '#820ad1',
+    others: '#8f7fa1',
+    tooltipBg: '#ffffff',
+    tooltipBorder: '#e5dfec',
+    tooltipText: '#241b2f',
   },
   dark: {
-    axis: '#a6a091',
-    grid: '#3a382f',
-    income: '#6ed095',
-    expense: '#ee9a82',
-    line: '#5fc79f',
-    tooltipBg: '#201f1a',
-    tooltipBorder: '#3a382f',
-    tooltipText: '#ece8de',
+    axis: '#b4a8c2',
+    grid: '#382a48',
+    income: '#6bd79a',
+    expense: '#ff9b93',
+    line: '#c79bff',
+    others: '#8d7fa3',
+    tooltipBg: '#1d1428',
+    tooltipBorder: '#382a48',
+    tooltipText: '#f3eef8',
   },
 }

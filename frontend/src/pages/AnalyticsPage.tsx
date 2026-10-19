@@ -30,14 +30,18 @@ function monthRange(months: number): { from: string; to: string } {
   return { from: from.toISOString(), to: now.toISOString() }
 }
 
-function topCategories(categories: CategorySpend[], size = 6): CategorySpend[] {
+function topCategories(
+  categories: CategorySpend[],
+  othersColor: string,
+  size = 6,
+): CategorySpend[] {
   if (categories.length <= size) return categories
   const head = categories.slice(0, size)
   const rest = categories.slice(size)
   const others: CategorySpend = {
     id: 'others',
     name: 'Otros',
-    color: '#64748b',
+    color: othersColor,
     total: rest.reduce((sum, item) => sum + item.total, 0),
     percentage: rest.reduce((sum, item) => sum + item.percentage, 0),
     rank: 0,
@@ -73,7 +77,7 @@ export function AnalyticsPage() {
   const timeline = useAsyncData(loadTimeline)
 
   const totals = summary.data?.totals
-  const pieData = topCategories(summary.data?.byCategory ?? [])
+  const pieData = topCategories(summary.data?.byCategory ?? [], palette.others)
   const latestTrendMonth = (trends.data?.trends ?? []).reduce(
     (max, item) => (item.month > max ? item.month : max),
     '',
@@ -127,11 +131,23 @@ export function AnalyticsPage() {
           {monthly.data && monthly.data.months.length > 0 && (
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={monthly.data.months}>
-                <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
-                <XAxis dataKey="month" tickFormatter={formatMonthLabel} stroke={palette.axis} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={palette.grid}
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="month"
+                  tickFormatter={formatMonthLabel}
+                  tick={{ fill: palette.axis, fontSize: 12 }}
+                  axisLine={{ stroke: palette.grid }}
+                  tickLine={{ stroke: palette.grid }}
+                />
                 <YAxis
                   tickFormatter={(value) => formatNumber(value)}
-                  stroke={palette.axis}
+                  tick={{ fill: palette.axis, fontSize: 12 }}
+                  axisLine={{ stroke: palette.grid }}
+                  tickLine={{ stroke: palette.grid }}
                   width={70}
                 />
                 <Tooltip
@@ -140,10 +156,27 @@ export function AnalyticsPage() {
                   contentStyle={tooltipStyle}
                   labelStyle={{ color: palette.tooltipText }}
                   itemStyle={{ color: palette.tooltipText }}
+                  cursor={{ fill: palette.grid, opacity: 0.35 }}
                 />
-                <Legend wrapperStyle={{ color: palette.axis }} />
-                <Bar dataKey="income" name="Ingresos" fill={palette.income} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expense" name="Gastos" fill={palette.expense} radius={[4, 4, 0, 0]} />
+                <Legend
+                  formatter={(value) => (
+                    <span style={{ color: palette.axis }}>{value}</span>
+                  )}
+                />
+                <Bar
+                  dataKey="income"
+                  name="Ingresos"
+                  fill={palette.income}
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={36}
+                />
+                <Bar
+                  dataKey="expense"
+                  name="Gastos"
+                  fill={palette.expense}
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={36}
+                />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -167,6 +200,9 @@ export function AnalyticsPage() {
                   nameKey="name"
                   innerRadius={50}
                   outerRadius={85}
+                  paddingAngle={1}
+                  stroke={palette.tooltipBg}
+                  strokeWidth={2}
                 >
                   {pieData.map((item) => (
                     <Cell key={item.id} fill={item.color} />
@@ -178,7 +214,11 @@ export function AnalyticsPage() {
                   labelStyle={{ color: palette.tooltipText }}
                   itemStyle={{ color: palette.tooltipText }}
                 />
-                <Legend wrapperStyle={{ color: palette.axis }} />
+                <Legend
+                  formatter={(value) => (
+                    <span style={{ color: palette.axis }}>{value}</span>
+                  )}
+                />
               </PieChart>
             </ResponsiveContainer>
           )}
@@ -191,16 +231,24 @@ export function AnalyticsPage() {
           {timeline.data && timeline.data.timeline.length > 0 && (
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={timeline.data.timeline}>
-                <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={palette.grid}
+                  vertical={false}
+                />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(value) => formatDate(String(value))}
-                  stroke={palette.axis}
+                  tick={{ fill: palette.axis, fontSize: 12 }}
+                  axisLine={{ stroke: palette.grid }}
+                  tickLine={{ stroke: palette.grid }}
                   minTickGap={40}
                 />
                 <YAxis
                   tickFormatter={(value) => formatNumber(value)}
-                  stroke={palette.axis}
+                  tick={{ fill: palette.axis, fontSize: 12 }}
+                  axisLine={{ stroke: palette.grid }}
+                  tickLine={{ stroke: palette.grid }}
                   width={70}
                 />
                 <Tooltip
@@ -209,6 +257,7 @@ export function AnalyticsPage() {
                   contentStyle={tooltipStyle}
                   labelStyle={{ color: palette.tooltipText }}
                   itemStyle={{ color: palette.tooltipText }}
+                  cursor={{ stroke: palette.axis, strokeDasharray: '3 3' }}
                 />
                 <Line
                   type="monotone"
@@ -216,6 +265,7 @@ export function AnalyticsPage() {
                   name="Saldo"
                   stroke={palette.line}
                   dot={false}
+                  activeDot={{ r: 4 }}
                   strokeWidth={2}
                 />
               </LineChart>
