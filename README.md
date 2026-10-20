@@ -23,36 +23,19 @@ completo y visualizacion de datos. Moneda: **Peso colombiano (COP)**, locale `es
 |   |-- src/            api, hooks, lib, features, pages y estilos
 |   |-- Dockerfile      build Vite + nginx
 |   `-- nginx.conf      SPA fallback + proxy /api -> backend
-|-- docker-compose.yml  Postgres + backend + web (local / Coolify)
+|-- docker-compose.yml  Postgres + backend + web (Coolify)
 |-- .github/workflows/  CI (GitHub Actions)
-`-- .env.example        variables para docker compose
+`-- .env.example        variables para Coolify
 ```
 
 ## Requisitos
 
 - Python 3.12
 - Node.js >= 20
-- PostgreSQL 16+ (o Docker)
+- PostgreSQL 16+ para desarrollo local
 - En Windows, usar `npm.cmd` si la ExecutionPolicy bloquea `npm.ps1`.
 
-## Puesta en marcha
-
-### Opcion A: Docker Compose (recomendada)
-
-```bash
-cp .env.example .env          # editar secretos JWT y passwords de Postgres
-docker compose up --build
-```
-
-> El backend se conecta con un rol de aplicacion de minimo privilegio (`POSTGRES_USER`),
-> creado por `postgres/init/01-app-role.sh` al inicializar un volumen nuevo. Si ya tenias
-> un volumen previo, recrealo con `docker compose down -v` para aplicar el rol.
-
-El backend aplica las migraciones automaticamente al iniciar (`alembic upgrade head`).
-- Frontend (nginx): `http://localhost:8080`
-- API: `http://localhost:4000/api`
-
-### Opcion B: Local (Postgres nativo)
+## Puesta en marcha local
 
 Backend:
 
@@ -143,23 +126,56 @@ En desarrollo, la documentacion interactiva esta en `http://localhost:4000/api/d
 
 ## Integracion continua
 
-`.github/workflows/ci.yml` corre en cada push/PR a `main`:
+`.github/workflows/ci.yml` corre en push/PR a `main` y tambien puede lanzarse manualmente
+(`workflow_dispatch`):
 
 - **Backend**: PostgreSQL 16 como servicio, `pip install -r requirements-dev.txt`,
   `alembic upgrade head`, `ruff check`, `ruff format --check`, `mypy`, `pytest` y
   `compileall`.
 - **Frontend**: `npm ci`, `typecheck`, `lint`, `test` y `build`.
+- **Docker**: valida `docker compose config`, construye ambas imagenes, levanta el stack,
+  ejecuta el seed y prueba healthcheck, frontend y login.
 - **Seguridad**: `pip-audit`, `npm audit` y Trivy.
 
 ## Deploy en Coolify
 
-1. Crear el recurso apuntando a este repositorio con el `docker-compose.yml`.
-2. Definir las variables de `.env.example` en el panel (secretos JWT, password de Postgres).
-3. El contenedor del backend corre `alembic upgrade head` antes de arrancar.
-4. El servicio `web` compila la SPA y la sirve con nginx, proxyeando `/api` al backend;
-   exponer su puerto (`WEB_PORT`, def. 8080) en el dominio publico.
-5. Configurar dominios: si el frontend accede al API por el mismo origen (proxy nginx) no
-   se necesita CORS; si se sirven en dominios distintos, apuntar `CORS_ORIGIN` al del frontend.
+El `docker-compose.yml` esta preparado para produccion:
+
+- No publica puertos en el host.
+- Solo `web` expone el puerto interno `8080` al proxy de Coolify.
+- `postgres` y `backend` quedan en la red privada del compose.
+- El backend aplica `alembic upgrade head` al arrancar.
+
+1. Crear un recurso **Docker Compose** desde el repositorio.
+2. Usar `docker-compose.yml` como compose de produccion.
+3. Definir las variables de `.env.example` en el panel de Coolify:
+   - `POSTGRES_ADMIN_PASSWORD`
+   - `APP_DB_USER`, `APP_DB_PASSWORD` (password URL-safe/hexadecimal)
+   - `POSTGRES_DB`
+   - `CORS_ORIGIN=https://tu-dominio`
+   - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
+4. Asignar el dominio al servicio `web` con puerto interno `8080`:
+
+   ```text
+   https://tu-dominio:8080
+   ```
+
+   El sufijo `:8080` solo indica el puerto interno del contenedor. La URL publica es
+   `https://tu-dominio` (sin `:8080`); usa esa misma URL, sin barra final, en `CORS_ORIGIN`.
+
+5. Desplegar y revisar los logs de `postgres`, migraciones y `backend`.
+6. Configurar backup del volumen `postgres_data`.
+7. Mantener una sola replica del backend (el rate limit es en memoria).
+
+Datos demo opcionales (destructivo):
+
+```bash
+docker compose exec -T -e SEED_FORCE=true backend python -m scripts.seed
+```
+
+> El rol `APP_DB_USER` se crea solo al inicializar un volumen nuevo. Si cambias
+> `APP_DB_PASSWORD` despues del primer despliegue, actualiza el rol en PostgreSQL o recrea
+> el volumen de forma consciente.
 
 ## Roadmap
 

@@ -9,26 +9,27 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update -y \
+RUN apt-get update \
   && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY alembic.ini ./
-COPY migrations ./migrations
-COPY app ./app
-COPY scripts ./scripts
-COPY docker-entrypoint.sh ./
-RUN chmod +x ./docker-entrypoint.sh \
-  && useradd --create-home --uid 10001 appuser \
-  && chown -R appuser:appuser /app
+RUN useradd --create-home --uid 10001 appuser
+
+COPY --chown=appuser:appuser alembic.ini ./
+COPY --chown=appuser:appuser migrations ./migrations
+COPY --chown=appuser:appuser app ./app
+COPY --chown=appuser:appuser scripts ./scripts
+COPY --chown=appuser:appuser docker-entrypoint.sh ./
+RUN chmod +x ./docker-entrypoint.sh
 
 USER appuser
 EXPOSE 4000
+STOPSIGNAL SIGTERM
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://localhost:${PORT:-4000}/api/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:${PORT:-4000}/api/health || exit 1
 
 ENTRYPOINT ["./docker-entrypoint.sh"]

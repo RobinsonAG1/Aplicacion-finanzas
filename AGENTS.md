@@ -4,6 +4,7 @@
 - **Python backend + npm frontend**, no root package manager files: `backend/` (FastAPI + async SQLAlchemy + Alembic) and `frontend/` (React 19 + Vite SPA).
 - Backend commands run from `backend/` using the venv interpreter: `.venv\Scripts\python.exe`. Frontend npm commands run from `frontend/`.
 - `DOCUMENTACION.md` is the deep technical reference (Spanish); `README.md` is a quick start. Trust code/config over prose when they disagree.
+- Deployment targets Coolify via root `docker-compose.yml`: no host ports; only `web:8080` is exposed to Coolify's proxy. CI has a Docker smoke job.
 
 ## Windows shell
 - Use `npm.cmd` — ExecutionPolicy blocks `npm.ps1`.

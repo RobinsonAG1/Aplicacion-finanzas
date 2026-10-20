@@ -270,9 +270,9 @@ sequenceDiagram
 │   ├── nginx.conf                    SPA fallback + proxy /api + gzip + cache
 │   ├── vite.config.ts                plugin React + config vitest
 │   └── .env.example
-├── .github/workflows/ci.yml          CI (backend + frontend)
-├── docker-compose.yml                postgres + backend + web
-├── .env.example                      variables para docker compose
+├── .github/workflows/ci.yml          CI (backend + frontend + docker + seguridad)
+├── docker-compose.yml                postgres + backend + web (Coolify)
+├── .env.example                      variables para Coolify
 ├── README.md                         guía breve de arranque
 └── DOCUMENTACION.md                  este documento
 ```
@@ -845,7 +845,7 @@ paneles.
 | 6 | Cabeceras de seguridad | OK | Middleware de cabeceras + CSP/HSTS/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` en nginx |
 | 7 | CSV (inyección / límites) | OK | Allowlist en import; saneo anti fórmula en export; tope de 5000 filas y 2000 caracteres por campo |
 | 8 | Seed en producción | OK | `scripts/seed.py` aborta si `APP_ENV=production` salvo `SEED_FORCE=true` |
-| 9 | Exposición de PostgreSQL | OK | Puerto solo en loopback `127.0.0.1`; el backend usa un rol sin superusuario (`postgres/init/01-app-role.sh`) |
+| 9 | Exposición de PostgreSQL | OK | PostgreSQL solo en la red privada del compose (sin puerto en el host); el backend usa un rol sin superusuario (`postgres/init/01-app-role.sh`) |
 | 10 | Superficie de imagen / dependencias | OK | Backend `USER appuser`; nginx con `nginxinc/nginx-unprivileged` (no root); `pip-audit` + `npm audit` + Trivy en CI |
 | 11 | Fuga de datos en logs | OK | `redact_processor` de structlog para `Authorization`, cookies y campos sensibles |
 
@@ -863,8 +863,8 @@ paneles.
 
 **Fase B — Infraestructura y empaquetado**
 - Cabeceras de seguridad en nginx (`frontend/security-headers.conf`) — punto 6.
-- `docker-compose` publica PostgreSQL solo en `127.0.0.1`; el backend usa un rol de mínimo
-  privilegio — punto 9.
+- `docker-compose` deja PostgreSQL y el backend en la red privada, sin puertos en el host;
+  el backend usa un rol de mínimo privilegio — punto 9.
 - nginx sobre `nginxinc/nginx-unprivileged` (no root) — punto 10.
 - `pip-audit` + `npm audit` + Trivy en CI (`trivy-action` fijado por SHA, `v0.36.0`) — punto 10.
 
@@ -911,8 +911,9 @@ porque el upstream `backend` solo resuelve dentro de compose. **Observación men
 `/assets/` nginx devuelve dos cabeceras `Cache-Control` (`max-age=2592000` de `expires 30d` +
 `public, immutable` de `add_header`), redundancia inofensiva que puede simplificarse.
 
-> Pendiente únicamente la prueba end-to-end con Docker (`docker compose up --build`) en Linux
-> para confirmar el "non-root" y el rol de BD dentro de contenedor.
+> La prueba end-to-end en Linux la ejecuta el job `docker` del CI: construye las imágenes,
+> levanta el compose, aplica migraciones, ejecuta el seed y prueba healthcheck, frontend y
+> login. Esto confirma el "non-root" y el rol de BD dentro de contenedor.
 
 ---
 
@@ -942,27 +943,34 @@ es inválido.
 |---|---|---|
 | `VITE_API_URL` | `http://localhost:4000/api` | URL base de la API (en Docker se compila como `/api`) |
 
-### 11.3 Docker Compose (`.env` en la raíz)
+### 11.3 Docker Compose / Coolify (variables del panel)
+
+El compose de producción no publica puertos en el host. Coolify inyecta estas variables:
 
 | Variable | Def. | Descripción |
 |---|---|---|
-| `POSTGRES_ADMIN_USER` / `POSTGRES_ADMIN_PASSWORD` | `postgres` / `postgres` | Superusuario del contenedor (init y healthcheck) |
-| `POSTGRES_USER` | `finanzas` | Rol de aplicación (mínimo privilegio) que usa el backend |
-| `POSTGRES_PASSWORD` | `finanzas` | Contraseña del rol de aplicación |
+| `POSTGRES_ADMIN_USER` / `POSTGRES_ADMIN_PASSWORD` | `postgres` / — | Superusuario del contenedor (init y healthcheck) |
+| `APP_DB_USER` | `finanzas` | Rol de aplicación (mínimo privilegio) que usa el backend |
+| `APP_DB_PASSWORD` | — | Contraseña del rol de aplicación; usar valor URL-safe/hexadecimal |
 | `POSTGRES_DB` | `finanzas` | Nombre de la BD |
-| `POSTGRES_PORT` | `5432` | Puerto publicado **solo en `127.0.0.1`** |
-| `BACKEND_PORT` | `4000` | Puerto del backend en el host |
-| `WEB_PORT` | `8080` | Puerto público del frontend (nginx) |
-| `CORS_ORIGIN` | `http://localhost:8080` | Origen permitido |
+| `CORS_ORIGIN` | — | Origen público del frontend (`https://tu-dominio`) |
 | `LOG_LEVEL` | `info` | Nivel de logs |
+| `FORWARDED_ALLOW_IPS` | `*` | IPs de proxy confiables para `X-Forwarded-*` |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | — | **Obligatorias** (`:?` en compose) |
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | `900` / `604800` | TTL en segundos |
+| `SEED_FORCE` | `false` | Permite que el seed borre datos en producción |
 
 Generar secretos:
 
 ```bash
 python -c "import secrets; print(secrets.token_hex(48))"
+# Password de base (solo hexadecimal para evitar escapes en DATABASE_URL)
+python -c "import secrets; print(secrets.token_hex(32))"
 ```
+
+El dominio se asigna al servicio `web` con el puerto interno `8080`:
+`https://tu-dominio:8080`. El sufijo solo indica el puerto del contenedor; la URL pública es
+`https://tu-dominio` (sin `:8080`) y es la que debe usarse en `CORS_ORIGIN`, sin barra final.
 
 ---
 
@@ -1011,20 +1019,22 @@ Uvicorn gestiona `SIGINT`/`SIGTERM` y cierra las conexiones del pool.
 
 - Python 3.12 y `pip`.
 - Node.js >= 20 (recomendado 22) para el frontend.
-- PostgreSQL 16+ **o** Docker.
+- PostgreSQL 16+ para desarrollo local.
 - En Windows, usar `npm.cmd` si la ExecutionPolicy bloquea `npm.ps1`.
 
-### 13.2 Opción A — Docker Compose (recomendada)
+### 13.2 Opción A — Coolify (producción)
 
-```bash
-cp .env.example .env          # editar secretos JWT y password de Postgres
-docker compose up --build
+El `docker-compose.yml` es el compose de producción:
+
+```text
+https://tu-dominio:8080  ->  web:8080  ->  backend:4000  ->  postgres:5432
 ```
 
-- Frontend (nginx): `http://localhost:8080`
-- API: `http://localhost:4000/api`
-
-El backend aplica migraciones al iniciar (`alembic upgrade head`).
+El sufijo `:8080` solo indica el puerto interno del contenedor; la URL pública es
+`https://tu-dominio`. Crear un recurso Docker Compose desde el repositorio, cargar las
+variables de la sección 11.3, asignar el dominio al servicio `web` y desplegar. Coolify
+construye las imágenes, ejecuta las migraciones y enruta el tráfico HTTPS. No se publican
+puertos en el host.
 
 ### 13.3 Opción B — Local con PostgreSQL nativo
 
@@ -1076,14 +1086,15 @@ deshabilita en producción.
 ### 14.1 Imágenes
 
 - **Backend** (`backend/Dockerfile`): `python:3.12-slim`, instala `requirements.txt`, copia
-  `app/`, `migrations/`, `alembic.ini` y `scripts/`, corre como usuario no-root `appuser`,
-  expone `4000` y trae un `HEALTHCHECK` contra `/api/health`.
+  `app/`, `migrations/`, `alembic.ini`, `scripts/` y el entrypoint con propietario
+  `appuser`, corre como usuario no-root, expone `4000` y trae un `HEALTHCHECK` contra
+  `/api/health`. El entrypoint aplica migraciones y arranca Uvicorn con proxy headers.
 - **Frontend** (`frontend/Dockerfile`): build con Vite (`ARG VITE_API_URL=/api`) y runtime
-  `nginx:1.27-alpine` sirviendo `dist`, con `HEALTHCHECK` con `wget`.
+  `nginx-unprivileged:1.27-alpine` sirviendo `dist`, con `HEALTHCHECK` con `wget`.
 
 ### 14.2 nginx (`frontend/nginx.conf`)
 
-- `listen 80`, gzip para texto/JS/JSON/SVG.
+- `listen 8080`, gzip para texto/JS/JSON/SVG.
 - `location /api/` → `proxy_pass http://backend:4000` con cabeceras `X-Real-IP`,
   `X-Forwarded-For`, `X-Forwarded-Proto`; `client_max_body_size 10m`.
 - `location /assets/` → cache 30 días `immutable`.
@@ -1091,30 +1102,39 @@ deshabilita en producción.
 
 ### 14.3 Docker Compose
 
-Servicios: `postgres` (con volumen `finanzas_postgres_data` y healthcheck `pg_isready`),
-`backend` (depende de `postgres` saludable) y `web` (depende de `backend`). El backend lee
-la BD por el host interno `postgres`. PostgreSQL se publica **solo en `127.0.0.1`** y el
-backend se conecta con un rol de mínimo privilegio creado por `postgres/init/01-app-role.sh`.
-El contenedor `web` corre nginx sin privilegios (`nginx-unprivileged`, puerto interno 8080).
+Servicios: `postgres` (volumen `postgres_data`, healthcheck `pg_isready` por TCP),
+`backend` (depende de `postgres` saludable) y `web` (depende de `backend` saludable). El
+backend lee la BD por el host interno `postgres` y usa el rol de mínimo privilegio creado
+por `postgres/init/01-app-role.sh`.
+
+**No se publica ningún puerto en el host.** Solo `web` expone el puerto interno `8080` al
+proxy de Coolify. `postgres` y `backend` quedan en la red privada del compose.
 
 ### 14.4 Coolify
 
-1. Crear un recurso apuntando al repositorio con `docker-compose.yml`.
-2. Definir las variables de `.env.example` en el panel (secretos JWT y password de Postgres).
-3. El backend aplica migraciones antes de arrancar.
-4. El servicio `web` compila y sirve la SPA; exponer su puerto (`WEB_PORT`, def. 8080) en el
-   dominio público.
-5. Con proxy nginx no se necesita CORS; si se sirven en dominios distintos, apuntar
-   `CORS_ORIGIN` al del frontend.
+1. Crear un recurso **Docker Compose** desde el repositorio.
+2. Usar `docker-compose.yml` como compose de producción.
+3. Definir las variables de la sección 11.3 en el panel de Coolify.
+4. Asignar el dominio al servicio `web` con el puerto interno `8080`:
+   `https://tu-dominio:8080`. La URL pública es `https://tu-dominio`; `CORS_ORIGIN` debe
+   usar esa URL, sin barra final.
+5. Desplegar y revisar logs de Postgres, migraciones y backend.
+6. Configurar backup del volumen `postgres_data`.
+7. Mantener una sola réplica del backend (el rate limit es en memoria y las migraciones
+   corren en el entrypoint).
+8. Seed opcional (destructivo):
+   `docker compose exec -T -e SEED_FORCE=true backend python -m scripts.seed`.
 
 ### 14.5 Integración continua
 
-`.github/workflows/ci.yml` corre en push/PR a `main`:
+`.github/workflows/ci.yml` corre en push/PR a `main` y admite `workflow_dispatch`:
 
 - **Job `backend`**: servicio PostgreSQL 16, `pip install -r requirements-dev.txt`,
   `alembic upgrade head`, `ruff check`, `ruff format --check`, `mypy app scripts`,
   `pytest` y `compileall`.
 - **Job `frontend`**: `npm ci`, `typecheck`, `lint`, `test`, `build`.
+- **Job `docker`**: `docker compose config`, build de imágenes, `up --wait`, seed y smoke
+  test de healthcheck, frontend y login. Siempre ejecuta `docker compose down -v`.
 - **Job `security`**: `pip-audit`, `npm audit` y Trivy (imagen fijada por SHA).
 
 Incluye `concurrency` (cancela ejecuciones previas) y `permissions: contents: read`.
@@ -1169,6 +1189,9 @@ npm.cmd run lint
 npm.cmd run test
 npm.cmd run build
 ```
+
+El job `docker` del CI valida además `docker compose config`, construye las imágenes y hace
+un smoke test del stack completo.
 
 ---
 
