@@ -38,7 +38,7 @@ Aplicación **full-server** (no serverless) para gestionar finanzas personales e
 colombianos. Está dividida en dos proyectos independientes que se comunican **solo por
 HTTP**:
 
-- **`backend/`** — API REST en Express 5 + TypeScript ESM, PostgreSQL y Prisma 7. Cubre
+- **`backend/`** — API REST en Python 3.12 + FastAPI, PostgreSQL y SQLAlchemy 2 async. Cubre
   autenticación, cuentas, categorías, transacciones (con importación/exportación CSV),
   presupuestos, metas de ahorro, facturas recurrentes con recordatorios y analítica con
   window functions de SQL.
@@ -60,9 +60,9 @@ HTTP**:
 | Empaquetado | Dockerfiles (backend + nginx), `docker-compose.yml`, entrypoint con migraciones |
 | CI | GitHub Actions: lint, tipos, tests y build de backend y frontend |
 
-**Estado actual**: backend con **87 pruebas** de integración; frontend con **50 pruebas**
-(Vitest + Testing Library). CI configurada con `npm audit` y Trivy. Auditoría de seguridad
-completada: plan de endurecimiento A/B/C aplicado (ver [sección 10](#10-seguridad)).
+**Estado actual**: backend con **95 pruebas** de integración; frontend con **50 pruebas**
+(Vitest + Testing Library). CI configurada con `pip-audit`, `npm audit` y Trivy. Auditoría de
+seguridad completada: plan de endurecimiento A/B/C aplicado (ver [sección 10](#10-seguridad)).
 
 ---
 
@@ -112,13 +112,13 @@ flowchart LR
 
   subgraph Docker["Docker Compose / Coolify"]
     W["web (nginx :80 → host :8080)<br/>SPA + proxy /api"]
-    A["backend (Express :4000)"]
+    A["backend (FastAPI :4000)"]
     P[("PostgreSQL :5432")]
   end
 
   U -->|"HTTP/HTTPS"| W
   W -->|"/api/* → proxy_pass"| A
-  A -->|"Prisma · SQL"| P
+  A -->|"SQLAlchemy async (asyncpg) · SQL"| P
 ```
 
 - En **producción**, nginx sirve la SPA y reenvía `/api/` a `backend:4000`: mismo origen,
@@ -130,26 +130,26 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  R["routes/*.route.ts<br/>definición HTTP + validación + auth"] --> C["controllers/*.controller.ts<br/>traducen HTTP ↔ dominio"]
-  C --> S["services/*.service.ts<br/>reglas de negocio y transacciones"]
-  S --> RP["repositories/*.repository.ts<br/>acceso a datos"]
-  RP --> DB["Prisma Client (adapter pg) → PostgreSQL"]
-  MW["middlewares<br/>auth · validate · errorHandler · notFound · upload"] -.-> R
-  U["utils<br/>jwt · password · csv · AppError · asyncHandler · authContext"] -.-> C
-  CFG["config<br/>env (Zod) · logger (pino)"] -.-> R
+  R["routers/*.py<br/>definición HTTP + validación Pydantic + auth"] --> S["services/*.py<br/>reglas de negocio y transacciones"]
+  S --> RP["repositories/*.py<br/>acceso a datos SQLAlchemy"]
+  RP --> DB["AsyncSession (asyncpg) → PostgreSQL"]
+  MW["middlewares<br/>request logging · body limit · security headers · rate limit"] -.-> R
+  U["utils<br/>csv · seguridad · errores"] -.-> S
+  CFG["core<br/>config (pydantic-settings) · logging (structlog)"] -.-> R
 ```
 
 Reglas de esta arquitectura:
 
-1. **Rutas** solo montan handlers, aplican `authenticate` y esquemas Zod; no contienen lógica.
-2. **Controladores** extraen el `userId` (`requireUserId`), parsean query/params puntuales y
-   definen el código HTTP y el envoltorio de respuesta.
-3. **Servicios** contienen la lógica de negocio y usan `prisma.$transaction` cuando hay que
-   mantener invariantes (p. ej. saldo de cuenta).
-4. **Repositorios** encapsulan Prisma; la mayoría expone `findOwned(id, userId)` para forzar
-   la propiedad (anti-IDOR).
-5. **Errores**: los servicios lanzan `AppError` (con `statusCode` y `code`); un único
-   `errorHandler` los serializa.
+1. **Routers** declaran endpoints, dependencias de auth/DB y esquemas Pydantic; no contienen
+   lógica de negocio.
+2. **Schemas** separan entrada (`CamelRequest`, alias camelCase) de salida (`CamelModel`);
+   los decimales viajan como string y las fechas en UTC.
+3. **Servicios** contienen la lógica y coordinan repositorios; usan `commit=False` y un único
+   `commit` cuando hay que mantener invariantes (pago de factura, importación CSV).
+4. **Repositorios** encapsulan SQLAlchemy; exponen `find_owned(...)` para forzar la propiedad
+   (anti-IDOR).
+5. **Errores**: los servicios lanzan `AppError`; los handlers serializan
+   `{ error: { message, code?, details? } }`.
 
 ### 3.3 Arquitectura del frontend
 
@@ -174,17 +174,17 @@ sequenceDiagram
   participant U as Usuario
   participant P as Página React
   participant C as api/client.ts
-  participant A as API Express
-  participant H as authenticate
+  participant A as API FastAPI
+  participant H as get_current_user
   participant S as Service
   participant D as PostgreSQL
 
   U->>P: interacción
   P->>C: apiRequest('/accounts')
   C->>A: GET /api/accounts (Bearer access)
-  A->>H: verifyAccessToken (jose HS256)
-  H->>S: req.user = { id, email }
-  S->>D: SELECT ... WHERE "userId" = id
+  A->>H: verify_access_token (PyJWT HS256)
+  H->>S: AuthUser = { id, email }
+  S->>D: SELECT ... WHERE user_id = id
   D-->>S: filas
   S-->>A: datos
   A-->>C: 200 { data }
@@ -202,19 +202,19 @@ sequenceDiagram
 
 | Categoría | Tecnología | Versión | Notas |
 |---|---|---|---|
-| Runtime | Node.js | >= 20 (CI: 22) | ESM, `"type": "module"` |
-| Framework | Express | ^5.3.0 | Middlewares async nativos |
-| Lenguaje | TypeScript | ^6.0.3 | `moduleResolution: NodeNext`, imports con `.js` |
-| Base de datos | PostgreSQL | 16+ (local: 18.4) | `Decimal(16,2)`, window functions |
-| ORM | Prisma | 7.10.1 | Generador `prisma-client` a `src/generated/prisma` |
-| Driver | `@prisma/adapter-pg` + `pg` | 7.10.1 / 8.23.1 | Adaptador `PrismaPg` |
-| Auth | `jose` (HS256) + `@node-rs/argon2` | 6.2.12 / 2.2.2 | Access + refresh; Argon2id |
-| Validación | Zod | ^4.6.7 | Esquemas por recurso |
-| Seguridad HTTP | `helmet` + `cors` + `express-rate-limit` | 8.3 / 2.8 / 8.7 | Cabeceras, CORS, límite global |
-| Subidas | `multer` | ^2.4.0 | Memoria, límite 5 MB, filtro CSV |
-| Logs | `pino` + `pino-http` | ^10 / ^11 | Pretty en desarrollo |
-| Tests | `vitest` + `supertest` | ^5 / ^7 | Integración sobre HTTP |
-| Lint/format | `eslint` + `typescript-eslint` + `prettier` | 10 / 8.71 / 3.9 | |
+| Runtime | Python | 3.12 | Venv local `.venv` |
+| Framework | FastAPI | 0.150.0 | ASGI, dependencias, OpenAPI |
+| Servidor | Uvicorn | 0.54.0 | `uvicorn[standard]` |
+| Base de datos | PostgreSQL | 16+ (local: 18.4) | `NUMERIC(16,2)`, window functions |
+| ORM | SQLAlchemy | 2.1.5 | Async, `asyncpg` 0.32 |
+| Migraciones | Alembic | 1.20.0 | Migración inicial incluida |
+| Auth | PyJWT (HS256) + argon2-cffi | 2.15.1 / 25.1.0 | Access + refresh; Argon2id |
+| Validación | Pydantic | 2.14.1 | `CamelRequest` / `CamelModel` |
+| Seguridad HTTP | slowapi + middleware propio | 0.1.10 | Rate limit, CORS, cabeceras |
+| Subidas | `python-multipart` | 0.0.32 | Multipart + texto plano, límite 5 MB |
+| Logs | structlog | 26.1.0 | JSON/consola según entorno |
+| Tests | pytest + pytest-asyncio + httpx | 9.1 / 1.4 / 0.28 | Integración sobre HTTP |
+| Lint/format/tipos | ruff + mypy | 0.17.1 / 2.4.0 | `ruff check`, `ruff format`, `mypy` |
 
 ### 4.2 Frontend
 
@@ -236,31 +236,24 @@ sequenceDiagram
 ```text
 .
 ├── backend/                          API REST (proyecto independiente)
-│   ├── prisma/
-│   │   ├── schema.prisma             10 modelos + 7 enums
-│   │   ├── migrations/               migración inicial
-│   │   └── seed.ts                   seed determinista (usuario demo)
-│   ├── src/
-│   │   ├── app.ts                    createApp(): helmet, cors, rate limit, rutas
-│   │   ├── server.ts                 arranque + apagado ordenado + handlers de proceso
-│   │   ├── config/
-│   │   │   ├── env.ts                validación de entorno con Zod
-│   │   │   └── logger.ts             pino (pretty en dev)
-│   │   ├── db/prisma.ts              PrismaClient con adapter PrismaPg
-│   │   ├── middlewares/              auth, errorHandler, notFound, upload, validate
-│   │   ├── routes/                   index + una ruta por recurso
-│   │   ├── controllers/              una capa fina por recurso
-│   │   ├── services/                 reglas de negocio (incl. transactionCsv)
-│   │   ├── repositories/             acceso a datos (incl. analytics con SQL raw)
-│   │   ├── schemas/                  esquemas Zod de entrada
-│   │   ├── types/                    auth.ts + express.d.ts (req.user)
-│   │   ├── utils/                    jwt, password, csv, AppError, asyncHandler, authContext
-│   │   └── generated/prisma/         cliente generado (gitignored)
-│   ├── tests/                        pruebas de integración + helpers + global-setup
-│   ├── Dockerfile                    build multi-stage + runtime con USER node
-│   ├── docker-entrypoint.sh          prisma migrate deploy + node dist/server.js
-│   ├── eslint.config.js / .prettierrc.json
-│   ├── prisma7.config.ts             config de Prisma 7 (schema, migrations, seed)
+│   ├── app/
+│   │   ├── main.py                   create_app(): CORS, middlewares, routers, lifespan
+│   │   ├── core/                     config, logging, errores, seguridad, cookies, rate limit
+│   │   ├── db/                       engine async, sesión UTC, modelos y enums
+│   │   ├── dependencies/             auth (Bearer) y sesión de BD
+│   │   ├── routers/                  un router por recurso
+│   │   ├── schemas/                  Pydantic v2 (camelCase, validación)
+│   │   ├── services/                 reglas de negocio (incl. transaction_csv_service)
+│   │   ├── repositories/             SQLAlchemy (incl. analytics con SQL raw)
+│   │   └── utils/                    csv (escape/parseo)
+│   ├── migrations/                   migraciones Alembic
+│   ├── scripts/seed.py               seed determinista (usuario demo)
+│   ├── tests/                        pruebas de integración + helpers
+│   ├── Dockerfile                    Python 3.12-slim + usuario no-root
+│   ├── docker-entrypoint.sh          alembic upgrade head + uvicorn
+│   ├── alembic.ini
+│   ├── pyproject.toml                configuración de ruff, mypy y pytest
+│   ├── requirements.txt / requirements-dev.txt
 │   └── .env.example
 ├── frontend/                         SPA React (proyecto independiente)
 │   ├── src/
@@ -288,8 +281,8 @@ sequenceDiagram
 
 ## 6. Modelo de datos
 
-Definido en `backend/prisma/schema.prisma`. **10 tablas y 7 enums**, con **14 claves
-foráneas**. Los importes usan `Decimal(16,2)`; los IDs son `cuid()`.
+Definido en `backend/app/db/models/`. **10 tablas y 7 enums**. Los importes usan
+`NUMERIC(16,2)`; los IDs son `UUID` (`gen_random_uuid()`) y las fechas `TIMESTAMPTZ` en UTC.
 
 ### 6.1 Diagrama entidad-relación
 
@@ -422,7 +415,7 @@ Respuesta `201` (el **refresh token** viaja en una cookie `refresh_token` `HttpO
 
 ```json
 {
-  "user": { "id": "cuid", "email": "ana@ejemplo.com", "name": "Ana", "createdAt": "..." },
+  "user": { "id": "5f1c…", "email": "ana@ejemplo.com", "name": "Ana", "createdAt": "..." },
   "accessToken": "eyJ…"
 }
 ```
@@ -672,7 +665,8 @@ Si no se envían fechas, `summary` usa del **inicio del mes actual** hasta ahora
 
 ### 8.2 Saldo de cuenta (transacciones)
 
-`transactionService.create/update/remove` envuelven la operación en `prisma.$transaction`:
+`transaction_service.create/update/remove` ejecutan la transacción y el ajuste de saldo en
+la misma `AsyncSession` con un único `commit`:
 
 - **Crear**: incrementa/decrementa el saldo según `signedAmount(type, amount)`.
 - **Actualizar**: revierte el efecto anterior y aplica el nuevo, incluso si cambia de cuenta.
@@ -729,7 +723,7 @@ Se valida propiedad de `accountId` y `categoryId` antes de operar (anti-IDOR).
 
 ### 8.7 Analítica (SQL con window functions)
 
-`analytics.repository.ts` usa `$queryRaw` **parametrizado** (template tags):
+`analytics_repository.py` usa `text()` con **parámetros vinculados** y la sesión en UTC:
 
 - `totals`: `SUM(...) FILTER (WHERE type=…)` + neto.
 - `expenseByCategory`: porcentaje con `SUM(SUM(...)) OVER ()` y `RANK() OVER (ORDER BY …)`.
@@ -739,9 +733,12 @@ Se valida propiedad de `accountId` y `categoryId` antes de operar (anti-IDOR).
 - `categoryTrends`: `LAG(...)` por categoría para la variación mes a mes.
 - `balanceTimeline`: saldo acumulado con ventana `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`.
 
+La conexión fija `timezone=UTC` en `app/db/session.py`; de lo contrario PostgreSQL usa la
+zona local del servidor y las etiquetas mensuales se desplazan un mes.
+
 ### 8.8 Sugerencia de categoría
 
-`transactionService.suggestions(merchant)` busca hasta 500 transacciones recientes del
+`transaction_service.suggestions(merchant)` busca hasta 500 transacciones recientes del
 usuario cuyo comercio contenga el término, cuenta categorías y devuelve las 3 más
 frecuentes con `confidence = count / total` (redondeado a 2 decimales).
 
@@ -822,43 +819,44 @@ paneles.
 
 ### 10.1 Controles ya implementados
 
-- **Hashing de contraseñas** con Argon2id (`memoryCost 19456`, `timeCost 2`, `outputLen 32`).
-- **JWT**: access y refresh firmados (HS256, `jose`) con issuer/audience fijos y secretos
-  distintos (mínimo 32 caracteres validado por Zod).
+- **Hashing de contraseñas** con Argon2id (`memory_cost 19456`, `time_cost 2`, `hash_len 32`).
+- **JWT**: access y refresh firmados (HS256, PyJWT) con issuer/audience fijos y secretos
+  distintos (mínimo 32 caracteres validado por pydantic-settings).
 - **Refresh tokens hasheados** (SHA-256) en BD, con rotación, expiración y revocación.
-- **Autorización por propiedad**: todos los repositorios exponen `findOwned`; recursos
+- **Autorización por propiedad**: todos los repositorios exponen `find_owned`; recursos
   ajenos responden `404`.
-- **SQL parametrizado**: analítica con `$queryRaw` por template tags (incluido `limit`).
-- **Validación de entrada** con Zod en body, params y query.
-- **helmet**, **CORS** restringido por `CORS_ORIGIN`, **rate limit** global (300/15 min).
+- **SQL parametrizado**: analítica con `text()` y parámetros vinculados (incluido `LIMIT`).
+- **Validación de entrada** con Pydantic v2 en body, params y query.
+- **Middlewares propios**, **CORS** restringido por `CORS_ORIGIN`, **rate limit** global
+  (300/15 min) con slowapi.
 - **Subida de CSV**: límite 5 MB, 1 archivo, allowlist de mimetype/extensión.
-- **Contenedor backend** ejecuta como usuario `node` (no root).
+- **Contenedor backend** ejecuta como usuario `appuser` (no root).
 - **Secretos**: `.env` nunca versionado (los `*.example` sí).
 
 ### 10.2 Auditoría de los 11 puntos revisados
 
 | # | Punto | Estado | Detalle |
 |---|---|---|---|
-| 1 | Inyección SQL en SQL raw | OK | Uso de template tags parametrizados en `analytics.repository.ts` |
-| 2 | IDOR / control de propiedad | OK | `findOwned` en todos los repos + tests de IDOR en create/update y export/import |
+| 1 | Inyección SQL en SQL raw | OK | `text()` con parámetros vinculados en `analytics_repository.py` |
+| 2 | IDOR / control de propiedad | OK | `find_owned` en todos los repos + tests de IDOR en create/update y export/import |
 | 3 | Almacenamiento de tokens | OK | Refresh en cookie `HttpOnly` `SameSite=Strict`; access solo en memoria; endpoints con cookie verifican `Origin` (CSRF) |
-| 4 | Reuso de refresh tokens | OK | Rotación + detección de reuso que revoca toda la familia (`revokeAllForUser`) |
+| 4 | Reuso de refresh tokens | OK | Rotación + detección de reuso que revoca toda la familia (`revoke_all_for_user`) |
 | 5 | Rate limiting | OK | Global 300/15 min + límite por endpoint de auth (login 10, register 20, refresh 60) |
-| 6 | Cabeceras de seguridad | OK | `helmet()` en Express + CSP/HSTS/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` en nginx |
+| 6 | Cabeceras de seguridad | OK | Middleware de cabeceras + CSP/HSTS/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` en nginx |
 | 7 | CSV (inyección / límites) | OK | Allowlist en import; saneo anti fórmula en export; tope de 5000 filas y 2000 caracteres por campo |
-| 8 | Seed en producción | OK | `seed.ts` aborta si `NODE_ENV=production` salvo `SEED_FORCE=true` |
+| 8 | Seed en producción | OK | `scripts/seed.py` aborta si `APP_ENV=production` salvo `SEED_FORCE=true` |
 | 9 | Exposición de PostgreSQL | OK | Puerto solo en loopback `127.0.0.1`; el backend usa un rol sin superusuario (`postgres/init/01-app-role.sh`) |
-| 10 | Superficie de imagen / dependencias | OK | Backend `USER node`; nginx con `nginxinc/nginx-unprivileged` (no root); `npm audit` + Trivy en CI |
-| 11 | Fuga de datos en logs | OK | pino `redact` de `Authorization`, cookies y campos sensibles |
+| 10 | Superficie de imagen / dependencias | OK | Backend `USER appuser`; nginx con `nginxinc/nginx-unprivileged` (no root); `pip-audit` + `npm audit` + Trivy en CI |
+| 11 | Fuga de datos en logs | OK | `redact_processor` de structlog para `Authorization`, cookies y campos sensibles |
 
 ### 10.3 Plan de endurecimiento aplicado (A → B → C)
 
 > Plan **ejecutado por completo**. Cada tarea quedó en un commit propio (`git log --oneline`).
 
 **Fase A — Backend (sin romper contratos)**
-- `redact` en pino para cabeceras de autorización, cookies y campos sensibles — punto 11.
-- Guardián de entorno en `seed.ts` (`SEED_FORCE=true` para forzar) — punto 8.
-- Detección de reuso de refresh → `revokeAllForUser` (revoca toda la familia) — punto 4.
+- `redact_processor` en structlog para cabeceras de autorización, cookies y campos sensibles — punto 11.
+- Guardián de entorno en `scripts/seed.py` (`SEED_FORCE=true` para forzar) — punto 8.
+- Detección de reuso de refresh → `revoke_all_for_user` (revoca toda la familia) — punto 4.
 - Saneo anti CSV-injection en export y topes de import (5000 filas / 2000 caracteres) — punto 7.
 - Rate limit específico por endpoint de auth — punto 5.
 - Tests de IDOR en create/update y export/import — punto 2.
@@ -868,7 +866,7 @@ paneles.
 - `docker-compose` publica PostgreSQL solo en `127.0.0.1`; el backend usa un rol de mínimo
   privilegio — punto 9.
 - nginx sobre `nginxinc/nginx-unprivileged` (no root) — punto 10.
-- `npm audit` + Trivy en CI (`trivy-action` fijado por SHA, `v0.36.0`) — punto 10.
+- `pip-audit` + `npm audit` + Trivy en CI (`trivy-action` fijado por SHA, `v0.36.0`) — punto 10.
 
 **Fase C — Autenticación en el cliente**
 - Refresh token en cookie `HttpOnly` (`SameSite=Strict`, `Secure` en producción) y access solo
@@ -924,7 +922,7 @@ porque el upstream `backend` solo resuelve dentro de compose. **Observación men
 
 | Variable | Requerida | Def. | Descripción |
 |---|---|---|---|
-| `NODE_ENV` | No | `development` | `development` \| `test` \| `production` |
+| `APP_ENV` | No | `development` | `development` \| `test` \| `production` (`NODE_ENV` también se acepta) |
 | `PORT` | No | `4000` | Puerto HTTP |
 | `DATABASE_URL` | **Sí** | — | Cadena de conexión PostgreSQL |
 | `CORS_ORIGIN` | No | `http://localhost:5173` | Origen permitido |
@@ -935,7 +933,8 @@ porque el upstream `backend` solo resuelve dentro de compose. **Observación men
 | `JWT_REFRESH_TTL` | No | `604800` | TTL refresh en segundos (7 días) |
 | `SEED_FORCE` | No | — | Solo seed: `true` fuerza el seed en producción |
 
-`env.ts` valida con Zod y **aborta el arranque** si algo falta o es inválido.
+`app/core/config.py` valida con pydantic-settings y **aborta el arranque** si algo falta o
+es inválido.
 
 ### 11.2 Frontend (`frontend/.env`)
 
@@ -962,7 +961,7 @@ porque el upstream `backend` solo resuelve dentro de compose. **Observación men
 Generar secretos:
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+python -c "import secrets; print(secrets.token_hex(48))"
 ```
 
 ---
@@ -971,37 +970,38 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ### 12.1 Migraciones
 
-- Migración inicial: `prisma/migrations/20261017191026_init/migration.sql`.
-- En desarrollo: `npm run prisma:migrate` (`prisma migrate dev`).
-- En producción/contenedor: `prisma migrate deploy` (se ejecuta en `docker-entrypoint.sh`).
-- `prisma7.config.ts` define `schema`, carpeta de migraciones y el comando de seed.
+- Migración inicial: `backend/migrations/versions/6577a9c815bf_initial_schema.py`.
+- En desarrollo: `alembic revision --autogenerate -m "..."` y `alembic upgrade head`.
+- En producción/contenedor: `alembic upgrade head` (se ejecuta en `docker-entrypoint.sh`).
+- `tests/conftest.py` aplica `alembic upgrade head` antes de la suite contra `finanzas_test`.
 
 ### 12.2 Seed
 
-`prisma/seed.ts` es **determinista** (`mulberry32` con semilla fija) y genera 6 meses de
-datos:
+`scripts/seed.py` genera 6 meses de datos con un PRNG de semilla fija:
 
 - Usuario demo `demo@finanzas.test` / `Demo1234!`.
 - 6 cuentas (ahorros, efectivo, corriente, tarjeta de crédito, inversión).
 - 13 categorías (10 de gasto, 3 de ingreso).
-- ~198 transacciones (salario, intereses, freelance, gastos fijos y variables).
+- ~200 transacciones (salario, intereses, freelance, gastos fijos y variables).
 - 6 presupuestos, 3 metas de ahorro, 8 facturas recurrentes con recordatorio.
 - Saldos de cuenta recalculados como base + neto de transacciones.
+- Aborta en producción salvo `SEED_FORCE=true` (borra todos los datos).
 
 ```bash
-npm run seed   # prisma db seed
+cd backend
+.\.venv\Scripts\python.exe -m scripts.seed
 ```
 
 ### 12.3 Acceso a la base (entorno local Windows)
 
 - PostgreSQL 18.4 nativo; `psql` en `C:\Program Files\PostgreSQL\18\bin\psql.exe`.
 - BD de desarrollo: `finanzas` (rol `finanzas`); BD de test: `finanzas_test`.
-- `npm run prisma:studio` abre el explorador de datos.
+- Usar `psql` o cualquier cliente SQL; ya no hay Prisma Studio.
 
 ### 12.4 Apagado ordenado
 
-`server.ts` maneja `SIGINT`/`SIGTERM`: cierra el servidor HTTP, desconecta Prisma y sale.
-También registra `unhandledRejection` y `uncaughtException` (este último termina el proceso).
+El `lifespan` de FastAPI registra el arranque/parada y ejecuta `dispose_engine()` al cerrar.
+Uvicorn gestiona `SIGINT`/`SIGTERM` y cierra las conexiones del pool.
 
 ---
 
@@ -1009,7 +1009,8 @@ También registra `unhandledRejection` y `uncaughtException` (este último termi
 
 ### 13.1 Requisitos
 
-- Node.js >= 20 (recomendado 22).
+- Python 3.12 y `pip`.
+- Node.js >= 20 (recomendado 22) para el frontend.
 - PostgreSQL 16+ **o** Docker.
 - En Windows, usar `npm.cmd` si la ExecutionPolicy bloquea `npm.ps1`.
 
@@ -1023,7 +1024,7 @@ docker compose up --build
 - Frontend (nginx): `http://localhost:8080`
 - API: `http://localhost:4000/api`
 
-El backend aplica migraciones al iniciar (`prisma migrate deploy`).
+El backend aplica migraciones al iniciar (`alembic upgrade head`).
 
 ### 13.3 Opción B — Local con PostgreSQL nativo
 
@@ -1031,43 +1032,42 @@ Terminal 1 (backend):
 
 ```bash
 cd backend
-cp .env.example .env          # ajustar DATABASE_URL y secretos JWT
-npm.cmd install
-npm.cmd run prisma:generate
-npm.cmd run prisma:migrate
-npm.cmd run seed
-npm.cmd run dev               # http://localhost:4000
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+copy .env.example .env        # ajustar DATABASE_URL y secretos JWT
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m scripts.seed
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 4000
 ```
 
 Terminal 2 (frontend):
 
 ```bash
 cd frontend
-cp .env.example .env          # VITE_API_URL apuntando al backend
+copy .env.example .env        # VITE_API_URL apuntando al backend
 npm.cmd install
 npm.cmd run dev               # http://localhost:5173
 ```
 
-### 13.4 Probar producción en local sin Docker
+### 13.4 Probar el backend en local sin Docker
 
 ```bash
-cd backend && npm.cmd run build && npm.cmd start        # :4000
-cd frontend && npm.cmd run build && npm.cmd run preview # :4173
+cd backend
+$env:APP_ENV="production"; .\.venv\Scripts\python.exe -m uvicorn app.main:app --port 4000
 ```
 
-Requiere ajustar `CORS_ORIGIN` en el backend al origen del `preview` (p. ej.
-`http://localhost:4173`).
+Requiere secretos JWT válidos y una `DATABASE_URL` accesible. La documentación OpenAPI se
+deshabilita en producción.
 
 ### 13.5 Comandos útiles
 
-| Backend | Frontend |
+| Backend (desde `backend/`) | Frontend (desde `frontend/`) |
 |---|---|
-| `npm run dev` / `build` / `start` | `npm run dev` / `build` / `preview` |
-| `npm run typecheck` / `lint` / `format` | `npm run typecheck` / `lint` |
-| `npm run test` / `test:watch` | `npm run test` / `test:watch` |
-| `npm run prisma:generate` / `prisma:migrate` | — |
-| `npm run db:migrate:deploy` | — |
-| `npm run prisma:studio` / `seed` | — |
+| `.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload` | `npm run dev` / `build` / `preview` |
+| `.\.venv\Scripts\python.exe -m alembic upgrade head` | `npm run typecheck` / `lint` |
+| `.\.venv\Scripts\python.exe -m scripts.seed` | `npm run test` / `test:watch` |
+| `.\.venv\Scripts\python.exe -m ruff check` / `format` / `mypy` | — |
+| `.\.venv\Scripts\python.exe -m pytest -q` | — |
 
 ---
 
@@ -1075,10 +1075,9 @@ Requiere ajustar `CORS_ORIGIN` en el backend al origen del `preview` (p. ej.
 
 ### 14.1 Imágenes
 
-- **Backend** (`backend/Dockerfile`): build multi-stage (Node 22-slim). Compila TS y genera el
-  cliente Prisma en la etapa de build; la etapa de runtime instala solo dependencias de
-  producción, copia `dist`, `prisma` y el entrypoint, corre como `USER node`, expone `4000`
-  y trae un `HEALTHCHECK` contra `/api/health`.
+- **Backend** (`backend/Dockerfile`): `python:3.12-slim`, instala `requirements.txt`, copia
+  `app/`, `migrations/`, `alembic.ini` y `scripts/`, corre como usuario no-root `appuser`,
+  expone `4000` y trae un `HEALTHCHECK` contra `/api/health`.
 - **Frontend** (`frontend/Dockerfile`): build con Vite (`ARG VITE_API_URL=/api`) y runtime
   `nginx:1.27-alpine` sirviendo `dist`, con `HEALTHCHECK` con `wget`.
 
@@ -1112,9 +1111,11 @@ El contenedor `web` corre nginx sin privilegios (`nginx-unprivileged`, puerto in
 
 `.github/workflows/ci.yml` corre en push/PR a `main`:
 
-- **Job `backend`**: servicio PostgreSQL 16, `npm ci`, generación de `.env.test`, `prisma
-  generate`, `typecheck`, `lint`, `test` (aplica migraciones) y `build`.
+- **Job `backend`**: servicio PostgreSQL 16, `pip install -r requirements-dev.txt`,
+  `alembic upgrade head`, `ruff check`, `ruff format --check`, `mypy app scripts`,
+  `pytest` y `compileall`.
 - **Job `frontend`**: `npm ci`, `typecheck`, `lint`, `test`, `build`.
+- **Job `security`**: `pip-audit`, `npm audit` y Trivy (imagen fijada por SHA).
 
 Incluye `concurrency` (cancela ejecuciones previas) y `permissions: contents: read`.
 
@@ -1122,19 +1123,18 @@ Incluye `concurrency` (cancela ejecuciones previas) y `permissions: contents: re
 
 ## 15. Testing
 
-### 15.1 Backend (Vitest + Supertest)
+### 15.1 Backend (pytest + httpx)
 
-- **Integración sobre HTTP** con una app real y base de datos real.
-- `tests/global-setup.ts` aplica migraciones (`prisma migrate deploy`) contra `finanzas_test`.
-- Helpers en `tests/helpers`: `db` (limpieza entre tests), `auth` (obtener tokens) y
-  `fixtures` (datos de prueba).
-- **71 pruebas** repartidas en 9 archivos: `auth`, `accounts`, `categories`, `transactions`,
-  `transactions-csv`, `budgets`, `pots`, `bills`, `analytics`.
+- **Integración sobre HTTP** con la app ASGI real y PostgreSQL real (`finanzas_test`).
+- `tests/conftest.py` aplica `alembic upgrade head` y trunca tablas entre tests.
+- Helpers en `tests/helpers`: sesión de BD, autenticación y fixtures de datos.
+- **95 pruebas** repartidas en 9 archivos: `test_auth`, `test_accounts`, `test_categories`,
+  `test_transactions`, `test_csv`, `test_budgets`, `test_pots`, `test_bills`, `test_analytics`.
 
 ```bash
 cd backend
-npm.cmd run test     # suite completa
-npm.cmd run test -- auth.test.ts   # archivo puntual
+.\.venv\Scripts\python.exe -m pytest -q                  # suite completa
+.\.venv\Scripts\python.exe -m pytest tests/test_auth.py -q
 ```
 
 ### 15.2 Frontend (Vitest + Testing Library + jsdom)
@@ -1156,10 +1156,18 @@ npm.cmd run test:watch
 ### 15.3 Verificación previa a un PR
 
 ```bash
-# backend
-cd backend && npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && npm.cmd run build
-# frontend
-cd frontend && npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && npm.cmd run build
+# backend (desde backend/)
+.\.venv\Scripts\python.exe -m ruff check app tests scripts
+.\.venv\Scripts\python.exe -m ruff format --check app tests scripts
+.\.venv\Scripts\python.exe -m mypy app scripts
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m compileall -q app scripts
+
+# frontend (desde frontend/)
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run test
+npm.cmd run build
 ```
 
 ---
@@ -1168,25 +1176,24 @@ cd frontend && npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && 
 
 ### 16.1 Estilo de código
 
-- **TypeScript ESM** en ambos proyectos; en backend los imports relativos llevan `.js`.
-- **Sin enums de TypeScript** (restricción `erasableSyntaxOnly`): se usan uniones de literales
-  o los enums generados por Prisma.
+- **Python 3.12** en backend (tipos explícitos, `from __future__ import annotations` cuando
+  aplica) y **TypeScript** en frontend.
+- **Sin enums de TypeScript** (restricción `erasableSyntaxOnly`): se usan uniones de literales.
 - **Sin comentarios** salvo donde aportan (los `oxlint-disable` justifican reglas concretas).
-- Formato con **Prettier** (backend) y **oxlint** (frontend); lint con ESLint en backend.
-- Prefijo `I` desaconsejado; tipos como `PublicUser`, `TokenContext`, etc.
+- Formato y lint con **ruff** + **mypy** (backend) y **oxlint** + `tsc` (frontend).
+- Prefijo `I` desaconsejado; tipos como `PublicUser`, `AuthUser`, etc.
 
 ### 16.2 Organización
 
-- Backend por capas (`routes → controllers → services → repositories`), un archivo por recurso.
+- Backend por capas (`routers → services → repositories`), un archivo por recurso.
 - Frontend por dominio (`api`, `features`, `pages`, `lib`, `hooks`, `components`).
 - Los `fetcher` de `useAsyncData` deben ser estables (`useCallback`).
 
 ### 16.3 Flujo Git
 
 - Rama principal `main`; commits por tarea (`T1`, `T2`, …) con mensaje breve.
-- No se commitean `.env`, `dist/`, `node_modules/`, `coverage/` ni
-  `src/generated/prisma/`.
-- Antes de commitear: `git status`, `git diff` y ejecutar typecheck/lint/tests.
+- No se commitean `.env`, `.venv/`, `__pycache__/`, `dist/`, `node_modules/` ni `coverage/`.
+- Antes de commitear: `git status`, `git diff` y ejecutar lint, tipos y tests.
 
 ### 16.4 Roadmap
 
@@ -1197,7 +1204,7 @@ cd frontend && npm.cmd run typecheck && npm.cmd run lint && npm.cmd run test && 
 - [x] Analítica con window functions
 - [x] Frontend React + Recharts
 - [x] Integración continua (GitHub Actions)
-- [ ] Endurecimiento de seguridad (fases A/B/C, ver sección 10)
+- [x] Endurecimiento de seguridad (fases A/B/C, ver sección 10)
 - [ ] Despliegue continuo
 
 ---
@@ -1211,11 +1218,11 @@ BASE=http://localhost:4000/api
 
 # 1) Login y captura de tokens
 ACCESS=$(curl -s -X POST $BASE/auth/login -H "Content-Type: application/json" \
-  -d '{"email":"demo@finanzas.test","password":"Demo1234!"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).accessToken')
+  -d '{"email":"demo@finanzas.test","password":"Demo1234!"}' | python -c 'import json,sys; print(json.load(sys.stdin)["accessToken"])')
 
 # 2) Primera cuenta y categoría
-ACC=$(curl -s $BASE/accounts -H "Authorization: Bearer $ACCESS" | node -pe 'JSON.parse(require("fs").readFileSync(0)).data[0].id')
-CAT=$(curl -s $BASE/categories -H "Authorization: Bearer $ACCESS" | node -pe 'JSON.parse(require("fs").readFileSync(0)).data[0].id')
+ACC=$(curl -s $BASE/accounts -H "Authorization: Bearer $ACCESS" | python -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')
+CAT=$(curl -s $BASE/categories -H "Authorization: Bearer $ACCESS" | python -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')
 
 # 3) Crear una transacción
 curl -s -X POST $BASE/transactions -H "Authorization: Bearer $ACCESS" -H "Content-Type: application/json" \
@@ -1229,8 +1236,8 @@ curl -s "$BASE/analytics/summary" -H "Authorization: Bearer $ACCESS"
 
 | Código (`error.code`) | HTTP | Cuándo |
 |---|---|---|
-| `VALIDATION_ERROR` | 422 | Falla un esquema Zod |
-| `UNAUTHENTICATED` | 401 | Falta el `Bearer` o `req.user` |
+| `VALIDATION_ERROR` | 422 | Falla un esquema Pydantic |
+| `UNAUTHENTICATED` | 401 | Falta el `Bearer` o el usuario no está autenticado |
 | `INVALID_TOKEN` | 401 | Access inválido/expirado |
 | `INVALID_REFRESH_TOKEN` | 401 | Refresh inválido/expirado/revocado |
 | `INVALID_CREDENTIALS` | 401 | Login incorrecto |
@@ -1256,7 +1263,7 @@ curl -s "$BASE/analytics/summary" -H "Authorization: Bearer $ACCESS"
   (`channel: LOG`).
 - **¿Por qué `GET /categories` no filtra por tipo?** El filtrado por tipo se hace en el
   cliente; el endpoint devuelve todas.
-- **¿Cómo se replican los datos demo?** `npm run seed` es determinista (misma semilla).
+- **¿Cómo se replican los datos demo?** `python -m scripts.seed` es determinista (misma semilla).
 
 ---
 
