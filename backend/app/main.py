@@ -27,6 +27,7 @@ from app.core.rate_limit import limiter
 from app.db.session import dispose_engine
 from app.routers import (
     accounts,
+    analytics,
     auth,
     bills,
     budgets,
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(analytics.router)
     app.include_router(auth.router)
     app.include_router(accounts.router)
     app.include_router(categories.router)
