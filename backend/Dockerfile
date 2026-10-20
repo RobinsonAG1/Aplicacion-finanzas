@@ -1,39 +1,34 @@
 # syntax=docker/dockerfile:1
 
-# ---------------------------------------------------------------------------
-# Etapa de build: compila TypeScript y genera el cliente de Prisma
-# ---------------------------------------------------------------------------
-FROM node:22-slim AS build
-WORKDIR /app
-RUN apt-get update -y \
-  && apt-get install -y --no-install-recommends openssl \
-  && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
-RUN npm ci
-COPY prisma ./prisma
-COPY prisma7.config.ts tsconfig.json ./
-COPY src ./src
-RUN DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public" npx prisma generate \
-  && npm run build
+FROM python:3.12-slim AS runtime
 
-# ---------------------------------------------------------------------------
-# Etapa de runtime: solo dependencias de produccion + dist
-# ---------------------------------------------------------------------------
-FROM node:22-slim AS runtime
-ENV NODE_ENV=production
+ENV PYTHONDONTWRITEBYTECODE=1 \
+  PYTHONUNBUFFERED=1 \
+  PIP_NO_CACHE_DIR=1 \
+  APP_ENV=production
+
 WORKDIR /app
+
 RUN apt-get update -y \
-  && apt-get install -y --no-install-recommends openssl curl \
+  && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/prisma7.config.ts ./prisma7.config.ts
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
-USER node
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY alembic.ini ./
+COPY migrations ./migrations
+COPY app ./app
+COPY scripts ./scripts
+COPY docker-entrypoint.sh ./
+RUN chmod +x ./docker-entrypoint.sh \
+  && useradd --create-home --uid 10001 appuser \
+  && chown -R appuser:appuser /app
+
+USER appuser
 EXPOSE 4000
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS http://localhost:4000/api/health || exit 1
+  CMD curl -fsS http://localhost:${PORT:-4000}/api/health || exit 1
+
 ENTRYPOINT ["./docker-entrypoint.sh"]

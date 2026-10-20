@@ -1,25 +1,31 @@
 # AGENTS.md
 
 ## Layout
-- Two independent npm projects, **no root `package.json`**: `backend/` (Express 5 + TS ESM REST API) and `frontend/` (React 19 + Vite SPA). Run every npm command from inside the relevant folder.
-- `DOCUMENTACION.md` is the deep technical reference (Spanish); `README.md` is a quick start. Trust code/config over prose when they disagree (e.g. doc test counts are stale).
+- **Python backend + npm frontend**, no root package manager files: `backend/` (FastAPI + async SQLAlchemy + Alembic) and `frontend/` (React 19 + Vite SPA).
+- Backend commands run from `backend/` using the venv interpreter: `.venv\Scripts\python.exe`. Frontend npm commands run from `frontend/`.
+- `DOCUMENTACION.md` is the deep technical reference (Spanish); `README.md` is a quick start. Trust code/config over prose when they disagree.
 
 ## Windows shell
 - Use `npm.cmd` — ExecutionPolicy blocks `npm.ps1`.
+- Use `.\.venv\Scripts\python.exe -m <tool>` instead of bare `python`/`pytest`.
 
 ## Backend (`backend/`)
-- ESM with `moduleResolution: NodeNext`: relative imports must end in `.js`, even for `.ts` files. `verbatimModuleSyntax` is on → use `import type` for types.
-- Prisma 7 generates the client to `src/generated/prisma` (gitignored). Run `npm run prisma:generate` after install or any schema change, before `typecheck` / `build` / `dev`.
-- Prisma config is the non-standard `prisma7.config.ts` (not `prisma.config.ts`); seed is `tsx prisma/seed.ts`.
-- `tsc --noEmit` / `build` exclude `tests/`; Vitest is what checks test files.
-- Layered flow: `route → controller → service → repository`. Repos expose `findOwned(id, userId)`; keep ownership checks (anti-IDOR) — foreign resources return `404`.
-- Errors: throw `AppError(statusCode, code)`; `errorHandler` serializes `{ error: { message, code } }`. Success is `{ data }` (paginated lists add `meta`).
-- `src/config/env.ts` validates env with Zod and aborts startup if anything is missing.
+- Python 3.12, FastAPI, Pydantic v2, SQLAlchemy 2 async + asyncpg, Alembic. Install with `pip install -r requirements-dev.txt`; recreate `.venv` on fresh clones.
+- Config lives in `app/core/config.py` (pydantic-settings). `APP_ENV` accepts `NODE_ENV` as fallback. Startup aborts on missing/invalid env.
+- Migrations: `alembic upgrade head`, `alembic revision --autogenerate -m "..."`. Test DB is migrated automatically by `tests/conftest.py`.
+- Seed: `.\.venv\Scripts\python.exe -m scripts.seed` (destructive; requires `SEED_FORCE=true` in production). Demo: `demo@finanzas.test` / `Demo1234!`.
+- Layered flow: `router → service → repository`. Repositories expose `find_owned(...)`; keep ownership checks (anti-IDOR) — foreign resources return `404`.
+- Errors: raise `AppError(message, status, code=...)`; handlers serialize `{ error: { message, code?, details? } }`. Success is `{ data }` (paginated lists add `meta`).
+- Request schemas inherit `CamelRequest`; response schemas inherit `CamelModel`. Amounts are Decimal strings in JSON; timestamps are UTC with `Z`.
+- The DB session runs with `timezone=UTC` (`app/db/session.py`). Use UTC for date math and SQL `date_trunc`/`to_char`; do not assume server-local time.
+- CSV export/import lives in `app/services/transaction_csv_service.py` and `app/utils/csv.py` (formula neutralization, UTF-8 BOM, 5000-row / 2000-char limits).
+- Code style: `ruff` (lint + format), `mypy app scripts`. No comments unless they explain non-obvious behavior.
 
 ### Backend tests
-- Integration tests hit a **real Postgres**. They read `backend/.env.test` (gitignored, so recreate on fresh clones) and `tests/global-setup.ts` runs `prisma migrate deploy` against `finanzas_test`. Local Postgres 18, role/password `finanzas`; dev DB `finanzas`, test DB `finanzas_test`.
-- `fileParallelism: false`; `tests/helpers/db.ts` resets tables between tests.
-- Full suite: `npm run test`. Single file: `npm run test -- auth.test.ts`.
+- Integration tests hit a **real Postgres**. They read `backend/.env.test` (gitignored, so recreate on fresh clones); `tests/conftest.py` runs `alembic upgrade head` against `finanzas_test`. Local Postgres 18, role/password `finanzas`; dev DB `finanzas`, test DB `finanzas_test`.
+- Tests are async (`pytest-asyncio`); tables are truncated between tests.
+- Full suite: `.\.venv\Scripts\python.exe -m pytest -q`. Single file: `... -m pytest tests/test_auth.py -q`.
+- Order: `ruff check` → `ruff format --check` → `mypy` → `pytest` → `compileall`.
 
 ## Frontend (`frontend/`)
 
@@ -119,4 +125,6 @@ Prioritize product identity over visual trends, usability over decoration, consi
 - `src/test/setup.ts` polyfills `ResizeObserver` (required by Recharts tests).
 
 ## Verify before finishing
-- CI (`.github/workflows/ci.yml`) runs per project: `npm ci` → (backend) `prisma generate` → `typecheck` → `lint` → `test` → `build`. Match that order; backend requires the generated Prisma client first.
+- CI (`.github/workflows/ci.yml`) runs per project: backend installs `requirements-dev.txt`, runs `alembic upgrade head`, `ruff check`, `ruff format --check`, `mypy`, `pytest`, `compileall`; frontend runs `npm ci`, `typecheck`, `lint`, `test`, `build`.
+- From `backend/`: `.\.venv\Scripts\python.exe -m ruff check app tests scripts`, `... -m ruff format --check app tests scripts`, `... -m mypy app scripts`, `... -m pytest -q`.
+- From `frontend/`: `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run test`, `npm.cmd run build`.

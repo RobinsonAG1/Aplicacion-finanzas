@@ -3,34 +3,37 @@
 Gestor de finanzas personales estilo dashboard (tipo Monzo) con modelado relacional
 completo y visualizacion de datos. Moneda: **Peso colombiano (COP)**, locale `es-CO`.
 
-- **Backend**: Express 5 + TypeScript (ESM) · PostgreSQL · Prisma 7 (driver adapter `pg`)
-  · SQL raw con window functions · JWT (access + refresh con rotacion) · Argon2id · Zod.
-- **Frontend**: React 19 + Vite + TypeScript · React Router 7 · Recharts · TanStack-style
-  data hook propio · oxlint · Vitest + Testing Library. SPA servida por nginx con proxy `/api`.
+- **Backend**: FastAPI + Python 3.12 + SQLAlchemy 2 async + asyncpg + Alembic
+  -> PostgreSQL -> SQL raw con window functions -> JWT (access + refresh con rotacion)
+  -> Argon2id -> Pydantic v2.
+- **Frontend**: React 19 + Vite + TypeScript -> React Router 7 -> Recharts -> TanStack-style
+  data hook propio -> oxlint -> Vitest + Testing Library. SPA servida por nginx con proxy `/api`.
 
 ## Estructura
 
-```
+```text
 .
-├── backend/            API REST (proyecto independiente)
-│   ├── prisma/         schema.prisma, migraciones y seed
-│   ├── src/            codigo fuente (config, db, middlewares, rutas, servicios, repos)
-│   ├── tests/          pruebas de integracion (vitest + supertest)
-│   └── Dockerfile      imagen del API
-├── frontend/           SPA React (proyecto independiente)
-│   ├── src/            api, hooks, lib, features, pages y estilos
-│   ├── Dockerfile      build Vite + nginx
-│   └── nginx.conf      SPA fallback + proxy /api -> backend
-├── docker-compose.yml  Postgres + backend + web (local / Coolify)
-├── .github/workflows/  CI (GitHub Actions)
-└── .env.example        variables para docker compose
+|-- backend/            API REST (proyecto independiente)
+|   |-- app/            core, db, dependencies, routers, schemas, services, repositories
+|   |-- migrations/     migraciones Alembic
+|   |-- scripts/        seed determinista (usuario demo)
+|   |-- tests/          pruebas de integracion (pytest + httpx)
+|   `-- Dockerfile      imagen del API
+|-- frontend/           SPA React (proyecto independiente)
+|   |-- src/            api, hooks, lib, features, pages y estilos
+|   |-- Dockerfile      build Vite + nginx
+|   `-- nginx.conf      SPA fallback + proxy /api -> backend
+|-- docker-compose.yml  Postgres + backend + web (local / Coolify)
+|-- .github/workflows/  CI (GitHub Actions)
+`-- .env.example        variables para docker compose
 ```
 
 ## Requisitos
 
+- Python 3.12
 - Node.js >= 20
 - PostgreSQL 16+ (o Docker)
-- `npm` (en Windows, usar `npm.cmd` si la ExecutionPolicy bloquea `npm.ps1`)
+- En Windows, usar `npm.cmd` si la ExecutionPolicy bloquea `npm.ps1`.
 
 ## Puesta en marcha
 
@@ -45,55 +48,60 @@ docker compose up --build
 > creado por `postgres/init/01-app-role.sh` al inicializar un volumen nuevo. Si ya tenias
 > un volumen previo, recrealo con `docker compose down -v` para aplicar el rol.
 
-El backend aplica las migraciones automaticamente al iniciar (`prisma migrate deploy`).
+El backend aplica las migraciones automaticamente al iniciar (`alembic upgrade head`).
 - Frontend (nginx): `http://localhost:8080`
 - API: `http://localhost:4000/api`
 
 ### Opcion B: Local (Postgres nativo)
 
+Backend:
+
 ```bash
 cd backend
-cp .env.example .env          # ajustar DATABASE_URL y secretos JWT
-npm install
-npm run prisma:generate
-npm run prisma:migrate        # crea/aplica migraciones
-npm run seed                  # datos demo (usuario demo@finanzas.test / Demo1234!)
-npm run dev                   # http://localhost:4000
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+copy .env.example .env          # ajustar DATABASE_URL y secretos JWT
+.\.venv\Scripts\python.exe -m alembic upgrade head
+.\.venv\Scripts\python.exe -m scripts.seed
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 4000
 ```
 
-En otra terminal, el frontend:
+Datos demo: `demo@finanzas.test` / `Demo1234!`.
+
+Frontend, en otra terminal:
 
 ```bash
 cd frontend
-cp .env.example .env          # VITE_API_URL apuntando al backend
-npm install
-npm run dev                   # http://localhost:5173
+copy .env.example .env          # VITE_API_URL apuntando al backend
+npm.cmd install
+npm.cmd run dev                 # http://localhost:5173
 ```
 
 ## Variables de entorno (backend)
 
 | Variable | Descripcion |
 |---|---|
-| `NODE_ENV` | `development` \| `test` \| `production` |
+| `APP_ENV` | `development` \| `test` \| `production` (`NODE_ENV` tambien se acepta) |
 | `PORT` | Puerto HTTP (def. 4000) |
 | `DATABASE_URL` | Conexion PostgreSQL |
 | `CORS_ORIGIN` | Origen permitido para el frontend |
-| `LOG_LEVEL` | Nivel de logs pino |
+| `LOG_LEVEL` | Nivel de logs |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Secretos (min. 32 caracteres, distintos) |
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | TTL en segundos (900 / 604800) |
+| `SEED_FORCE` | Solo seed: `true` permite borrar datos en produccion |
 
 ## Comandos (backend)
 
 | Comando | Descripcion |
 |---|---|
-| `npm run dev` | Servidor en modo watch |
-| `npm run build` / `npm start` | Compilar / ejecutar `dist` |
-| `npm run typecheck` / `npm run lint` | Tipos / lint |
-| `npm run test` | Pruebas de integracion |
-| `npm run prisma:migrate` | Migraciones en desarrollo |
-| `npm run db:migrate:deploy` | Migraciones en produccion |
-| `npm run prisma:studio` | Explorador de base de datos |
-| `npm run seed` | Datos demo deterministicos |
+| `.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload` | Servidor en modo desarrollo |
+| `.\.venv\Scripts\python.exe -m alembic upgrade head` | Aplicar migraciones |
+| `.\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "..."` | Nueva migracion |
+| `.\.venv\Scripts\python.exe -m scripts.seed` | Datos demo deterministas |
+| `.\.venv\Scripts\python.exe -m ruff check app tests scripts` | Lint |
+| `.\.venv\Scripts\python.exe -m ruff format --check app tests scripts` | Formato |
+| `.\.venv\Scripts\python.exe -m mypy app scripts` | Tipos |
+| `.\.venv\Scripts\python.exe -m pytest -q` | Pruebas de integracion |
 
 ## Variables de entorno (frontend)
 
@@ -130,19 +138,24 @@ Todas las rutas viven bajo `/api`. Salvo `auth` y `health`, requieren
 La lista de transacciones soporta paginacion, busqueda, orden y filtros:
 `?page=1&limit=10&search=&sort=date|amount|createdAt&order=asc|desc&categoryId=&accountId=&type=&from=&to=`.
 
+En desarrollo, la documentacion interactiva esta en `http://localhost:4000/api/docs`
+(deshabilitada en produccion).
+
 ## Integracion continua
 
-`.github/workflows/ci.yml` corre en cada push/PR a `main` con dos jobs:
+`.github/workflows/ci.yml` corre en cada push/PR a `main`:
 
-- **Backend**: PostgreSQL 16 como servicio, `prisma generate`, `typecheck`, `lint`, `test`
-  (crea `.env.test` y aplica `prisma migrate deploy`) y `build`.
-- **Frontend**: `typecheck`, `lint`, `test` y `build`.
+- **Backend**: PostgreSQL 16 como servicio, `pip install -r requirements-dev.txt`,
+  `alembic upgrade head`, `ruff check`, `ruff format --check`, `mypy`, `pytest` y
+  `compileall`.
+- **Frontend**: `npm ci`, `typecheck`, `lint`, `test` y `build`.
+- **Seguridad**: `pip-audit`, `npm audit` y Trivy.
 
 ## Deploy en Coolify
 
 1. Crear el recurso apuntando a este repositorio con el `docker-compose.yml`.
 2. Definir las variables de `.env.example` en el panel (secretos JWT, password de Postgres).
-3. El contenedor del backend corre `prisma migrate deploy` antes de arrancar.
+3. El contenedor del backend corre `alembic upgrade head` antes de arrancar.
 4. El servicio `web` compila la SPA y la sirve con nginx, proxyeando `/api` al backend;
    exponer su puerto (`WEB_PORT`, def. 8080) en el dominio publico.
 5. Configurar dominios: si el frontend accede al API por el mismo origen (proxy nginx) no
@@ -157,4 +170,5 @@ La lista de transacciones soporta paginacion, busqueda, orden y filtros:
 - [x] Analitica con window functions
 - [x] Frontend React + Recharts (dashboard, cuentas, categorias, transacciones, presupuestos, metas de ahorro, facturas, analitica)
 - [x] Integracion continua (GitHub Actions)
+- [x] Migracion del backend a FastAPI + SQLAlchemy
 - [ ] Despliegue continuo

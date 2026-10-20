@@ -2,7 +2,7 @@
 set -e
 
 echo "Aplicando migraciones de base de datos..."
-npx --no-install prisma migrate deploy
+alembic upgrade head
 
 echo "Iniciando servidor..."
-exec node dist/server.js
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-4000}"

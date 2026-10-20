@@ -1,8 +1,11 @@
-node_modules
-dist
-coverage
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
 tests
-src/generated
 .env
 .env.*
 !.env.example
@@ -11,3 +14,4 @@ src/generated
 .gitignore
 Dockerfile
 .dockerignore
+README.md
