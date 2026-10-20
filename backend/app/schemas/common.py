@@ -1,4 +1,8 @@
+import uuid
+
 from pydantic import BaseModel, ConfigDict
+
+from app.db.models.enums import CategoryType
 
 
 def to_camel(value: str) -> str:
@@ -19,3 +23,10 @@ class CamelRequest(BaseModel):
         alias_generator=to_camel,
         populate_by_name=True,
     )
+
+
+class CategoryBrief(CamelModel):
+    id: uuid.UUID
+    name: str
+    color: str
+    type: CategoryType

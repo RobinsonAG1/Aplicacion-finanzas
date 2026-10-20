@@ -166,7 +166,11 @@ async def get_transaction(db: AsyncSession, user_id: uuid.UUID, raw_id: str) -> 
 
 
 async def create_transaction(
-    db: AsyncSession, user_id: uuid.UUID, payload: TransactionCreate
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    payload: TransactionCreate,
+    *,
+    commit: bool = True,
 ) -> TransactionPublic:
     account_id = await _ensure_account(db, user_id, payload.account_id)
     category_id: uuid.UUID | None = None
@@ -187,7 +191,9 @@ async def create_transaction(
     await transaction_repository.adjust_balance(
         db, account_id, _signed(payload.type, payload.amount)
     )
-    await db.commit()
+    await db.flush()
+    if commit:
+        await db.commit()
     return await _load(db, transaction.id, user_id)
 
 

@@ -6,7 +6,7 @@ from typing import Literal, Self
 from pydantic import Field, field_validator, model_validator
 
 from app.db.models.enums import CategoryType, TransactionType
-from app.schemas.common import CamelModel, CamelRequest
+from app.schemas.common import CamelModel, CamelRequest, CategoryBrief
 
 
 def _normalize_datetime(value: datetime) -> datetime:
@@ -25,13 +25,6 @@ def _validate_optional_text(value: str | None, *, maximum: int) -> str | None:
     if len(value) > maximum:
         raise ValueError(f"Maximo {maximum} caracteres")
     return value
-
-
-class CategoryBrief(CamelModel):
-    id: uuid.UUID
-    name: str
-    color: str
-    type: CategoryType
 
 
 class AccountBrief(CamelModel):

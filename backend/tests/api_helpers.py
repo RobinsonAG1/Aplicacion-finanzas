@@ -108,3 +108,65 @@ async def get_account_balance(
     response = await client.get(f"/api/accounts/{account_id}", headers=auth_header(user))
     assert response.status_code == 200, response.text
     return Decimal(response.json()["data"]["balance"])
+
+
+async def create_budget(
+    client: httpx.AsyncClient,
+    user: dict[str, str],
+    *,
+    category_id: str,
+    limit_amount: float | int = 100000,
+    period: str = "MONTHLY",
+    start_date: str = "2026-10-01",
+) -> dict[str, Any]:
+    response = await client.post(
+        "/api/budgets",
+        headers=auth_header(user),
+        json={
+            "categoryId": category_id,
+            "limitAmount": limit_amount,
+            "period": period,
+            "startDate": start_date,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
+
+
+async def create_pot(
+    client: httpx.AsyncClient,
+    user: dict[str, str],
+    *,
+    name: str = "Vacaciones",
+    target_amount: float | int = 1000000,
+    color: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"name": name, "targetAmount": target_amount}
+    if color is not None:
+        payload["color"] = color
+    response = await client.post("/api/pots", headers=auth_header(user), json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
+
+
+async def create_bill(
+    client: httpx.AsyncClient,
+    user: dict[str, str],
+    *,
+    name: str = "Internet",
+    amount: float | int = 120000,
+    due_day: int = 15,
+    category_id: str | None = None,
+    is_active: bool = True,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "name": name,
+        "amount": amount,
+        "dueDay": due_day,
+        "isActive": is_active,
+    }
+    if category_id is not None:
+        payload["categoryId"] = category_id
+    response = await client.post("/api/bills", headers=auth_header(user), json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
