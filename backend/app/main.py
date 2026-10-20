@@ -25,7 +25,7 @@ from app.core.middleware import (
 )
 from app.core.rate_limit import limiter
 from app.db.session import dispose_engine
-from app.routers import accounts, auth, categories, health
+from app.routers import accounts, auth, categories, health, transactions
 
 logger = get_logger(__name__)
 
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(accounts.router)
     app.include_router(categories.router)
+    app.include_router(transactions.router)
     return app
 
 

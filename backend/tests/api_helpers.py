@@ -1,4 +1,6 @@
 import uuid
+from decimal import Decimal
+from typing import Any
 
 import httpx
 
@@ -35,3 +37,74 @@ async def create_test_user(
 
 def auth_header(user: dict[str, str]) -> dict[str, str]:
     return {"Authorization": f"Bearer {user['access_token']}"}
+
+
+async def create_account(
+    client: httpx.AsyncClient,
+    user: dict[str, str],
+    *,
+    name: str = "Cuenta",
+    account_type: str = "CASH",
+    balance: float | int = 0,
+) -> dict[str, Any]:
+    response = await client.post(
+        "/api/accounts",
+        headers=auth_header(user),
+        json={"name": name, "type": account_type, "balance": balance},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
+
+
+async def create_category(
+    client: httpx.AsyncClient,
+    user: dict[str, str],
+    *,
+    name: str = "Categoria",
+    category_type: str = "EXPENSE",
+    color: str = "#64748b",
+) -> dict[str, Any]:
+    response = await client.post(
+        "/api/categories",
+        headers=auth_header(user),
+        json={"name": name, "type": category_type, "color": color},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
+
+
+async def create_transaction(
+    client: httpx.AsyncClient,
+    user: dict[str, str],
+    *,
+    account_id: str,
+    category_id: str | None = None,
+    amount: float | int = 1000,
+    transaction_type: str = "EXPENSE",
+    description: str | None = None,
+    merchant: str | None = None,
+    date: str = "2026-10-05",
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "accountId": account_id,
+        "amount": amount,
+        "type": transaction_type,
+        "date": date,
+    }
+    if category_id is not None:
+        payload["categoryId"] = category_id
+    if description is not None:
+        payload["description"] = description
+    if merchant is not None:
+        payload["merchant"] = merchant
+    response = await client.post("/api/transactions", headers=auth_header(user), json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()["data"]
+
+
+async def get_account_balance(
+    client: httpx.AsyncClient, user: dict[str, str], account_id: str
+) -> Decimal:
+    response = await client.get(f"/api/accounts/{account_id}", headers=auth_header(user))
+    assert response.status_code == 200, response.text
+    return Decimal(response.json()["data"]["balance"])
