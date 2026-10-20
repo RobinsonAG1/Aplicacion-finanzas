@@ -8,3 +8,12 @@ src/generated/
 *.log
 
 /src/generated/prisma
+
+# Python (FastAPI)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage

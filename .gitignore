@@ -11,6 +11,15 @@ coverage/
 *.log
 npm-debug.log*
 
+# Python (backend FastAPI)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
 # Sistema operativo / editor
 .DS_Store
 Thumbs.db
