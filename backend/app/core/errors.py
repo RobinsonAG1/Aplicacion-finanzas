@@ -7,6 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
+from app.core.cookies import clear_refresh_cookie
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -48,13 +49,16 @@ def _path_and_method(request: Request) -> str:
     return f"{request.method} {target}"
 
 
-async def app_error_handler(_request: Request, exc: Exception) -> JSONResponse:
+async def app_error_handler(request: Request, exc: Exception) -> JSONResponse:
     if not isinstance(exc, AppError):
-        return await unhandled_exception_handler(_request, exc)
-    return JSONResponse(
+        return await unhandled_exception_handler(request, exc)
+    response = JSONResponse(
         status_code=exc.status_code,
         content=error_body(exc.message, exc.code, exc.details),
     )
+    if request.url.path == "/api/auth/refresh":
+        clear_refresh_cookie(response)
+    return response
 
 
 async def validation_exception_handler(request: Request, exc: Exception) -> JSONResponse:
