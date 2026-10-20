@@ -116,6 +116,42 @@ async def list_transactions(
     return rows, int(total)
 
 
+async def find_for_export(
+    db: AsyncSession, user_id: uuid.UUID, filters: TransactionFilters
+) -> Sequence[tuple[Transaction, Category | None, Account]]:
+    conditions = _conditions(user_id, filters)
+    if conditions is None:
+        return []
+    result = await db.execute(
+        select(Transaction, Category, Account)
+        .outerjoin(Category, Transaction.category_id == Category.id)
+        .join(Account, Transaction.account_id == Account.id)
+        .where(*conditions)
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+    )
+    return [(row[0], cast(Category | None, row[1]), row[2]) for row in result.all()]
+
+
+async def find_existing_keys(
+    db: AsyncSession, user_id: uuid.UUID, account_ids: Sequence[uuid.UUID]
+) -> Sequence[tuple[uuid.UUID, datetime, Decimal, TransactionType, str | None]]:
+    if not account_ids:
+        return []
+    result = await db.execute(
+        select(
+            Transaction.account_id,
+            Transaction.date,
+            Transaction.amount,
+            Transaction.type,
+            Transaction.merchant,
+        ).where(
+            Transaction.user_id == user_id,
+            Transaction.account_id.in_(account_ids),
+        )
+    )
+    return [(row[0], row[1], row[2], row[3], row[4]) for row in result.all()]
+
+
 async def find_owned(
     db: AsyncSession, transaction_id: uuid.UUID, user_id: uuid.UUID
 ) -> Transaction | None:
