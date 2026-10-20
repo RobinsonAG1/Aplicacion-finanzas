@@ -770,6 +770,7 @@ h3 {
 .auth-brand-copy h2 {
   max-width: 12ch;
   margin: 0;
+  color: var(--hero-text);
   font-family: var(--font-display);
   font-size: clamp(2rem, 3.6vw, 3.1rem);
   font-weight: 700;
