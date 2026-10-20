@@ -4,7 +4,7 @@
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["app", "tests"]
+src = ["app", "tests", "scripts"]
 exclude = [".venv", "migrations/versions"]
 
 [tool.ruff.lint]
