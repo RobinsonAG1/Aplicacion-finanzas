@@ -1,6 +1,6 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../features/auth/useAuth'
 import { ThemeToggle } from '../features/theme/ThemeToggle'
 import { BrandMark } from './BrandMark'
@@ -70,20 +70,56 @@ const NAV_ICONS: Record<NavIconName, ReactNode> = {
   ),
 }
 
-const NAV_ITEMS: { to: string; label: string; end?: boolean; icon: NavIconName }[] = [
-  { to: '/', label: 'Resumen', end: true, icon: 'home' },
-  { to: '/transactions', label: 'Transacciones', icon: 'transactions' },
-  { to: '/budgets', label: 'Presupuestos', icon: 'budgets' },
-  { to: '/pots', label: 'Metas', icon: 'pots' },
-  { to: '/bills', label: 'Facturas', icon: 'bills' },
-  { to: '/analytics', label: 'Analítica', icon: 'analytics' },
-  { to: '/accounts', label: 'Cuentas', icon: 'accounts' },
-  { to: '/categories', label: 'Categorías', icon: 'categories' },
+type NavItem = {
+  to: string
+  label: string
+  end?: boolean
+  icon: NavIconName
+}
+
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: 'Vista general',
+    items: [
+      { to: '/', label: 'Resumen', end: true, icon: 'home' },
+      { to: '/transactions', label: 'Transacciones', icon: 'transactions' },
+      { to: '/analytics', label: 'Analítica', icon: 'analytics' },
+    ],
+  },
+  {
+    label: 'Planificación',
+    items: [
+      { to: '/budgets', label: 'Presupuestos', icon: 'budgets' },
+      { to: '/pots', label: 'Metas', icon: 'pots' },
+      { to: '/bills', label: 'Facturas', icon: 'bills' },
+    ],
+  },
+  {
+    label: 'Administración',
+    items: [
+      { to: '/accounts', label: 'Cuentas', icon: 'accounts' },
+      { to: '/categories', label: 'Categorías', icon: 'categories' },
+    ],
+  },
 ]
+
+const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items)
 
 export function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [navOpen, setNavOpen] = useState(false)
+  const sidebarRef = useRef<HTMLElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  const currentSection = NAV_ITEMS.find((item) =>
+    item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
+  )
+  const sectionLabel = currentSection?.label ?? 'Página no encontrada'
+  const sectionIcon = currentSection ? NAV_ICONS[currentSection.icon] : null
+
   const initials = (user?.name ?? '')
     .trim()
     .split(/\s+/)
@@ -92,6 +128,67 @@ export function Layout() {
     .join('')
     .toUpperCase()
 
+  useEffect(() => {
+    if (!navOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeButtonRef.current?.focus()
+
+    const compactQuery = window.matchMedia('(max-width: 900px)')
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setNavOpen(false)
+        menuButtonRef.current?.focus()
+        return
+      }
+
+      if (event.key !== 'Tab') return
+
+      const focusables = Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled])',
+        ) ?? [],
+      ).filter((element) => element.getClientRects().length > 0)
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      if (!first || !last) return
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    function handleCompactChange() {
+      if (!compactQuery.matches) setNavOpen(false)
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    compactQuery.addEventListener('change', handleCompactChange)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', handleKeyDown)
+      compactQuery.removeEventListener('change', handleCompactChange)
+    }
+  }, [navOpen])
+
+  function closeNav() {
+    setNavOpen(false)
+    menuButtonRef.current?.focus()
+  }
+
+  function handleNavClick() {
+    if (!navOpen) return
+    setNavOpen(false)
+    menuButtonRef.current?.focus()
+  }
+
   async function handleLogout(): Promise<void> {
     await logout()
     navigate('/login', { replace: true })
@@ -99,56 +196,164 @@ export function Layout() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <Link to="/" className="brand" aria-label="Ir al resumen">
-          <BrandMark />
-          <span className="brand-text">
-            <span className="brand-name">Finanzas</span>
-            <span className="brand-sub">COP</span>
-          </span>
-        </Link>
-        <nav className="nav">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+      <aside ref={sidebarRef} className={`sidebar${navOpen ? ' is-open' : ''}`}>
+        <div className="sidebar-head">
+          <Link to="/" className="brand" aria-label="Finanzas, ir al resumen">
+            <BrandMark size={34} />
+            <span className="brand-text">
+              <span className="brand-name">Finanzas</span>
+              <span className="brand-sub">COP</span>
+            </span>
+          </Link>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="icon-button sidebar-close"
+            onClick={closeNav}
+            aria-label="Cerrar menú"
+            title="Cerrar menú"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="m6 6 12 12M18 6 6 18" />
+            </svg>
+          </button>
+        </div>
+
+        <nav id="primary-navigation" className="nav" aria-label="Navegación principal">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="nav-group">
+              <p className="nav-group-label">{group.label}</p>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={handleNavClick}
+                  className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+                >
+                  <svg
+                    className="nav-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    {NAV_ICONS[item.icon]}
+                  </svg>
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="sidebar-foot">
+          <span className="sidebar-foot-label">Apariencia</span>
+          <ThemeToggle />
+        </div>
+      </aside>
+
+      {navOpen && (
+        <div className="nav-scrim" aria-hidden="true" onClick={closeNav} />
+      )}
+
+      <div className="main">
+        <header className="topbar">
+          <div className="topbar-leading">
+            <button
+              ref={menuButtonRef}
+              type="button"
+              className="icon-button menu-toggle"
+              onClick={() => setNavOpen(true)}
+              aria-label="Menú de navegación"
+              aria-expanded={navOpen}
+              aria-controls="primary-navigation"
             >
               <svg
-                className="nav-icon"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="1.7"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+            </button>
+
+            <nav className="breadcrumb" aria-label="Ruta de navegación">
+              <Link to="/" className="breadcrumb-root">
+                Finanzas
+              </Link>
+              <span className="breadcrumb-divider" aria-hidden="true">
+                /
+              </span>
+              <span className="breadcrumb-current" aria-current="page">
+                {sectionIcon && (
+                  <svg
+                    className="breadcrumb-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    {sectionIcon}
+                  </svg>
+                )}
+                {sectionLabel}
+              </span>
+            </nav>
+          </div>
+
+          <div className="topbar-actions">
+            <div className="topbar-user">
+              <span className="avatar" aria-hidden="true">
+                {initials}
+              </span>
+              <div className="topbar-identity">
+                <strong>{user?.name}</strong>
+                <span>{user?.email}</span>
+              </div>
+            </div>
+            <span className="topbar-divider" aria-hidden="true" />
+            <button
+              type="button"
+              className="icon-button topbar-logout"
+              onClick={handleLogout}
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 aria-hidden="true"
                 focusable="false"
               >
-                {NAV_ICONS[item.icon]}
+                <path d="M9.5 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3.5" />
+                <path d="m15 8 4 4-4 4M19 12H9" />
               </svg>
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-      </aside>
-
-      <div className="main">
-        <header className="topbar">
-          <div className="topbar-user">
-            <span className="avatar" aria-hidden="true">
-              {initials}
-            </span>
-            <div className="topbar-identity">
-              <strong>{user?.name}</strong>
-              <span>{user?.email}</span>
-            </div>
-          </div>
-          <div className="topbar-actions">
-            <ThemeToggle />
-            <button type="button" className="btn" onClick={handleLogout}>
-              Cerrar sesión
+              <span className="topbar-logout-label">Cerrar sesión</span>
             </button>
           </div>
         </header>
