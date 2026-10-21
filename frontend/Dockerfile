@@ -3,7 +3,8 @@
 # ---------------------------------------------------------------------------
 # Etapa de build: compila la SPA con Vite
 # ---------------------------------------------------------------------------
-FROM node:22-slim AS build
+# Digests fijados (multi-arch) para builds reproducibles. Actualizar de forma consciente.
+FROM node:22-slim@sha256:3ed98443660ff48413b5af19ecefce3b9d50845a901a43420d47cc63a9fddbe9 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -17,7 +18,7 @@ RUN npm run build
 # Etapa de runtime: nginx sirviendo estaticos + proxy de /api
 # ---------------------------------------------------------------------------
 # Imagen unprivileged: nginx corre como usuario 'nginx' (no root) y escucha en 8080.
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.27-alpine@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0 AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /app/dist /usr/share/nginx/html

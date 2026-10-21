@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.12-slim AS runtime
+# Digest fijado (multi-arch) para builds reproducibles. Actualizar de forma consciente.
+FROM python:3.12-slim@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
   PYTHONUNBUFFERED=1 \
