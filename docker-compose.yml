@@ -7,11 +7,11 @@ services:
     stop_grace_period: 60s
     environment:
       # Superusuario: solo inicializa la BD y ejecuta el healthcheck.
-      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-finanzas}
+      POSTGRES_DB: finanzas
       # Rol de aplicacion (minimo privilegio) que usa el backend.
-      APP_DB_USER: ${APP_DB_USER:-finanzas}
+      APP_DB_USER: finanzas
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -42,17 +42,10 @@ services:
     init: true
     stop_grace_period: 30s
     environment:
-      DATABASE_URL: postgresql://${APP_DB_USER:-finanzas}:${APP_DB_PASSWORD:?define APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-finanzas}
+      DATABASE_URL: postgresql://finanzas:${APP_DB_PASSWORD:?define APP_DB_PASSWORD}@postgres:5432/finanzas
       CORS_ORIGIN: ${CORS_ORIGIN:?define CORS_ORIGIN}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?define JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?define JWT_REFRESH_SECRET}
-      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
-      # El backend solo es accesible desde la red interna del compose.
-      FORWARDED_ALLOW_IPS: '${FORWARDED_ALLOW_IPS:-*}'
-      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-false}
-      SEED_FORCE: '${SEED_FORCE:-false}'
     depends_on:
       postgres:
         condition: service_healthy
