@@ -1,9 +1,7 @@
 services:
   postgres:
-    # Imagen propia: copia los scripts de init DENTRO de la imagen (ver postgres/Dockerfile).
-    # Evita el bind mount relativo, que en Coolify puede llegar vacio al contenedor.
-    build:
-      context: ./postgres
+    # Digest fijado (multi-arch) para builds reproducibles. Actualizar de forma consciente.
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     restart: unless-stopped
     init: true
     stop_grace_period: 60s
@@ -17,12 +15,15 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 20s
+    networks:
+      - default
     deploy:
       resources:
         limits:
@@ -33,7 +34,7 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
- 
+
   backend:
     build:
       context: ./backend
@@ -41,64 +42,47 @@ services:
     init: true
     stop_grace_period: 30s
     environment:
-      APP_ENV: production
-      # El healthcheck y el Dockerfile deben usar este mismo puerto.
-      PORT: '4000'
-      # APP_DB_PASSWORD debe ser alfanumerica (openssl rand -hex 24) para no romper esta URL.
       DATABASE_URL: postgresql://finanzas:${APP_DB_PASSWORD:?define APP_DB_PASSWORD}@postgres:5432/finanzas
       CORS_ORIGIN: ${CORS_ORIGIN:?define CORS_ORIGIN}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?define JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?define JWT_REFRESH_SECRET}
-      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
-      # El backend solo es accesible desde la red interna del compose.
-      FORWARDED_ALLOW_IPS: '*'
-      # Fijados a false: no pueden activarse por error desde las variables de Coolify.
-      DEMO_SEED_ENABLED: 'false'
-      SEED_FORCE: 'false'
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - default
     healthcheck:
-      # Prueba curl, luego wget y por ultimo python, para no depender de una sola herramienta.
-      test:
-        - CMD-SHELL
-        - >-
-          curl -fsS http://127.0.0.1:4000/api/health
-          || wget -q -O /dev/null http://127.0.0.1:4000/api/health
-          || python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/api/health', timeout=4)"
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:4000/api/health']
       interval: 15s
       timeout: 5s
-      retries: 6
-      start_period: 90s
+      retries: 5
+      start_period: 60s
     deploy:
       resources:
         limits:
           cpus: '1.0'
-          memory: 1G
+          memory: 512M
     logging:
       driver: json-file
       options:
         max-size: '10m'
         max-file: '3'
- 
+
   web:
     build:
       context: ./frontend
-      args:
-        # Se incrusta al construir. Cambiarla exige reconstruir la imagen.
-        VITE_API_URL: /api
     restart: unless-stopped
     init: true
     stop_grace_period: 10s
-    # En Coolify asigna el dominio a ESTE servicio con el puerto interno:
-    # https://tudominio.com:8080
+    # Coolify enruta el dominio a este puerto interno; no se publica en el host.
     expose:
       - '8080'
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - default
+      - coolify
     healthcheck:
       test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
       interval: 30s
@@ -115,6 +99,10 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
- 
+
 volumes:
   postgres_data:
+
+networks:
+  coolify:
+    external: true
