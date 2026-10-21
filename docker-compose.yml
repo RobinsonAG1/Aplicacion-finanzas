@@ -51,6 +51,7 @@ services:
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
       # El backend solo es accesible desde la red interna del compose.
       FORWARDED_ALLOW_IPS: '${FORWARDED_ALLOW_IPS:-*}'
+      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-true}
       SEED_FORCE: '${SEED_FORCE:-false}'
     depends_on:
       postgres:

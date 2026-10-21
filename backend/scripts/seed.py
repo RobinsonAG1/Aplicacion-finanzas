@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import calendar
 import os
@@ -30,7 +31,7 @@ from app.db.models.enums import (
     TransactionType,
 )
 from app.db.session import SessionLocal, dispose_engine
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 DEMO_EMAIL = "demo@finanzas.test"
@@ -190,15 +191,29 @@ async def clear_data(db: AsyncSession) -> None:
     await db.commit()
 
 
-async def seed(db: AsyncSession) -> dict[str, int]:
-    if settings.is_production and os.environ.get("SEED_FORCE") != "true":
+async def seed(db: AsyncSession, *, clear_existing: bool = True) -> dict[str, int]:
+    if clear_existing and settings.is_production and os.environ.get("SEED_FORCE") != "true":
         raise RuntimeError(
             "El seed borra todos los datos y no puede ejecutarse en produccion. "
             "Define SEED_FORCE=true para forzarlo conscientemente."
         )
 
-    print("Limpiando datos previos...")
-    await clear_data(db)
+    if clear_existing:
+        print("Limpiando datos previos...")
+        await clear_data(db)
+    else:
+        existing_user_id = await db.scalar(select(User.id).where(User.email == DEMO_EMAIL))
+        if existing_user_id is not None:
+            print(f"La cuenta demo {DEMO_EMAIL} ya existe; no se modificaron datos.")
+            return {
+                "accounts": 0,
+                "categories": 0,
+                "transactions": 0,
+                "budgets": 0,
+                "pots": 0,
+                "bills": 0,
+            }
+        print("Creando datos demo sin modificar los datos existentes...")
 
     print("Creando usuario demo...")
     user = User(
@@ -445,12 +460,18 @@ async def seed(db: AsyncSession) -> dict[str, int]:
     }
 
 
-async def main() -> None:
+async def main(if_missing: bool) -> None:
     async with SessionLocal() as db:
-        summary = await seed(db)
+        summary = await seed(db, clear_existing=not if_missing)
     await dispose_engine()
     print("Seed completado:", {"user": DEMO_EMAIL, **summary})
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Crea datos de muestra para el usuario demo.")
+    parser.add_argument(
+        "--if-missing",
+        action="store_true",
+        help="Crea la cuenta demo solo si no existe y conserva los demás datos.",
+    )
+    asyncio.run(main(parser.parse_args().if_missing))

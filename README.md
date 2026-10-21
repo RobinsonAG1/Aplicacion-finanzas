@@ -71,6 +71,7 @@ npm.cmd run dev                 # http://localhost:5173
 | `LOG_LEVEL` | Nivel de logs |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Secretos (min. 32 caracteres, distintos) |
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | TTL en segundos (900 / 604800) |
+| `DEMO_SEED_ENABLED` | En Docker, crea datos demo si falta la cuenta (def. `true`) |
 | `SEED_FORCE` | Solo seed: `true` permite borrar datos en produccion |
 
 ## Comandos (backend)

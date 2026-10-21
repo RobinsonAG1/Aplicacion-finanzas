@@ -129,9 +129,6 @@ jobs:
       - name: Levantar stack
         run: docker compose up -d --wait --wait-timeout 180
 
-      - name: Cargar datos demo
-        run: docker compose exec -T -e SEED_FORCE=true backend python -m scripts.seed
-
       - name: Smoke test
         run: |
           docker compose exec -T web wget -qO- http://127.0.0.1:8080/api/health | grep -q '"status":"ok"'

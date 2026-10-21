@@ -90,6 +90,7 @@ Marcadas con `${VAR:?}` en el compose: el despliegue falla si faltan.
 | `JWT_REFRESH_SECRET` | Sí | Secreto de refresh tokens (≥32 caracteres, **distinto** del anterior) |
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | No (900 / 604800) | TTL en segundos |
 | `FORWARDED_ALLOW_IPS` | No (def. `*`) | IPs de proxy confiables para `X-Forwarded-*` |
+| `DEMO_SEED_ENABLED` | No (def. `true`) | Crea datos de muestra solo si no existe la cuenta demo; `false` lo desactiva |
 | `SEED_FORCE` | No (def. `false`) | Solo para ejecutar el seed destructivo de forma manual |
 
 Generación de secretos (ejecutar donde prefieras, no pegarlos en Git):
@@ -108,6 +109,11 @@ Reglas:
 - `CORS_ORIGIN` no es solo CORS: también se usa como validación CSRF en
   `POST /api/auth/refresh` y `/logout`. Un valor incorrecto devuelve 403 y rompe la sesión.
 - No hay variables `VITE_*` en ejecución: `VITE_API_URL=/api` se incrusta al construir la SPA.
+- `DEMO_SEED_ENABLED=true` crea al iniciar `demo@finanzas.test` / `Demo1234!` y datos de muestra
+  durante el primer despliegue. La contraseña es pública y la cuenta no es privada: úsala solo
+  para demostración; los datos y cambios de ese usuario quedan visibles para quien inicie sesión.
+  El seed automático nunca borra otras cuentas ni sobrescribe la cuenta demo ya existente.
+- Para desplegar sin la cuenta de demostración, define `DEMO_SEED_ENABLED=false` en Coolify.
 
 ---
 
