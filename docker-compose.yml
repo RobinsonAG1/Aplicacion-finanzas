@@ -26,9 +26,6 @@ services:
       DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-true}
     depends_on:
       - postgres
-    # Puerto interno del API (documenta el servicio; no se publica al host).
-    expose:
-      - '4000'
 
   web:
     build:
