@@ -16,6 +16,7 @@ services:
     environment:
       # Mismo usuario con el que se inicializa el volumen: una sola credencial.
       DB_HOST: postgres
+      DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-finanzas}
       DB_USER: ${POSTGRES_ADMIN_USER:-postgres}
       DB_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}

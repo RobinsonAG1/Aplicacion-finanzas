@@ -5,10 +5,11 @@ set -eu
 # de usuario y contrasena (una contrasena con @ : / # no rompe el DSN).
 if [ -z "${DATABASE_URL:-}" ]; then
   : "${DB_HOST:?falta DB_HOST}"
-  : "${DB_PORT:?falta DB_PORT}"
   : "${DB_NAME:?falta DB_NAME}"
   : "${DB_USER:?falta DB_USER}"
   : "${DB_PASSWORD:?falta DB_PASSWORD}"
+  DB_PORT="${DB_PORT:-5432}"
+  export DB_PORT
   DATABASE_URL=$(python -c "
 import os
 from urllib.parse import quote
