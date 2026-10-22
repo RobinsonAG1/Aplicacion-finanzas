@@ -70,7 +70,15 @@ services:
     environment:
       APP_ENV: production
       PORT: '4000'
-      DATABASE_URL: postgresql://${APP_DB_USER:-finanzas}:${APP_DB_PASSWORD:?define APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:-finanzas}
+      # La URL se construye en el entrypoint con URL-encoding: una contrasena con
+      # caracteres especiales (@ : / #) no puede romper el DSN. Si se define
+      # DATABASE_URL explicitamente, esa tiene prioridad.
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_HOST: ${DB_HOST:-postgres}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${POSTGRES_DB:-finanzas}
+      DB_USER: ${APP_DB_USER:-finanzas}
+      DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
       # Origen publico exacto: se usa para CORS y para la validacion CSRF de refresh/logout.
       CORS_ORIGIN: ${CORS_ORIGIN:?define CORS_ORIGIN}
       LOG_LEVEL: ${LOG_LEVEL:-info}

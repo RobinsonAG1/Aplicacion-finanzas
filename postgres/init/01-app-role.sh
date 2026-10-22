@@ -1,6 +1,7 @@
 #!/bin/sh
 # Crea/actualiza el rol de aplicacion (sin privilegios de superusuario) y le cede
-# la base y el esquema public. Solo se ejecuta al inicializar un volumen vacio.
+# la base y el esquema public. Es idempotente: se ejecuta al inicializar un volumen
+# vacio (initdb.d) y en cada despliegue (servicio postgres-init).
 set -e
 
 : "${APP_DB_USER:?falta APP_DB_USER}"

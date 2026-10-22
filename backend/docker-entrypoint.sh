@@ -1,6 +1,27 @@
 #!/bin/sh
 set -eu
 
+# Construye la URL de conexion a partir de las piezas sueltas, con URL-encoding
+# de usuario y contrasena (una contrasena con @ : / # no rompe el DSN).
+if [ -z "${DATABASE_URL:-}" ]; then
+  : "${DB_HOST:?falta DB_HOST}"
+  : "${DB_PORT:?falta DB_PORT}"
+  : "${DB_NAME:?falta DB_NAME}"
+  : "${DB_USER:?falta DB_USER}"
+  : "${DB_PASSWORD:?falta DB_PASSWORD}"
+  DATABASE_URL=$(python -c "
+import os
+from urllib.parse import quote
+user = quote(os.environ['DB_USER'], safe='')
+password = quote(os.environ['DB_PASSWORD'], safe='')
+host = os.environ['DB_HOST']
+port = os.environ['DB_PORT']
+name = quote(os.environ['DB_NAME'], safe='')
+print(f'postgresql://{user}:{password}@{host}:{port}/{name}')
+")
+  export DATABASE_URL
+fi
+
 # Espera a que PostgreSQL acepte conexiones reales con el rol de aplicacion.
 # pg_isready pasa cuando el proceso arranca, pero el rol de app puede no estar
 # listo aun (el script 01-app-role.sh se ejecuta despues del arranque inicial).

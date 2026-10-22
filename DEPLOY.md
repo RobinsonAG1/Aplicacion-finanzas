@@ -88,8 +88,10 @@ Marcadas con `${VAR:?}` en el compose: el despliegue falla si faltan.
 | `POSTGRES_ADMIN_USER` | No (def. `postgres`) | Superusuario del contenedor |
 | `POSTGRES_ADMIN_PASSWORD` | Sí | Superusuario del contenedor (init y healthcheck) |
 | `APP_DB_USER` | No (def. `finanzas`) | Rol de aplicación usado por el backend |
-| `APP_DB_PASSWORD` | Sí | Password del rol de aplicación (usar hexadecimal, va dentro de `DATABASE_URL`) |
+| `APP_DB_PASSWORD` | Sí | Password del rol de aplicación (el entrypoint la URL-encodea al montar el DSN) |
 | `POSTGRES_DB` | No (def. `finanzas`) | Nombre de la base |
+| `DATABASE_URL` | No | Solo si se quiere forzar el DSN completo; por defecto se construye con `DB_*` |
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | No | Override del DSN. Por defecto: `postgres` / `5432` / `POSTGRES_DB` / `APP_DB_USER` / `APP_DB_PASSWORD` |
 | `CORS_ORIGIN` | Sí | Origen público exacto: `https://<dominio>` **sin barra final** |
 | `LOG_LEVEL` | No (def. `info`) | Nivel de logs (`fatal`…`trace`, `silent`) |
 | `JWT_ACCESS_SECRET` | Sí | Secreto de access tokens (≥32 caracteres) |
@@ -105,7 +107,8 @@ Generación de secretos (ejecutar donde prefieras, no pegarlos en Git):
 # Secretos JWT (uno distinto para cada variable)
 python -c "import secrets; print(secrets.token_hex(48))"
 
-# Password de base (solo hexadecimal, para no romper la DATABASE_URL)
+# Password de base (hexadecimal recomendado; si usa otros caracteres, el
+# entrypoint los URL-encodea al construir el DSN)
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
@@ -303,8 +306,9 @@ docker compose exec postgres psql -U postgres -d finanzas
 \q
 ```
 
-La contraseña debe ser segura para una URL (`DATABASE_URL` la incluye sin escapar): usa
-hexadecimal (`python -c "import secrets; print(secrets.token_hex(32))"`).
+La contraseña admite cualquier carácter: el entrypoint construye el DSN con URL-encoding
+(`quote` de usuario y password), así que `@ : / #` no la rompen. Aun así, hexadecimal es lo
+recomendado (`python -c "import secrets; print(secrets.token_hex(32))"`).
 
 ---
 
@@ -330,6 +334,11 @@ puede conectarse a PostgreSQL con el rol de aplicación**.
 
 ### 13.1 Ver el error real
 
+Sin acceso por SSH: en Coolify, abre el deployment → contenedor `backend` → botón de **logs**
+(o *Show logs*). Ahí está la salida real del entrypoint.
+
+Con acceso al servidor:
+
 ```bash
 docker compose ps -a                 # el backend sale/reinicia en bucle
 docker compose logs --tail=100 backend
@@ -342,9 +351,14 @@ El entrypoint imprime el error de conexión real (no lo oculta). Los mensajes t�
 |---|---|---|
 | `role "finanzas" does not exist` | El rol no se creó (volumen ya inicializado sin el script) | Crear el rol (13.2) o redeplegar con `postgres-init` |
 | `password authentication failed for user "finanzas"` | `APP_DB_PASSWORD` no coincide con el del rol | `ALTER ROLE` (13.2) |
-| `invalid dsn` / `could not translate host name` | La contraseña tiene caracteres que rompen la URL (`@`, `:`, `#`, `/`) | Usar una contraseña hexadecimal |
+| `invalid dsn` / `could not translate host name` | La contraseña tiene caracteres que rompen la URL (`@`, `:`, `#`, `/`) | Ya no ocurre: el DSN se construye con URL-encoding. Si aparece, hay un `DATABASE_URL` manual definido |
 
 ### 13.2 Crear o sincronizar el rol a mano
+
+Desde la UI de Coolify: contenedor `postgres` → **Execute Command / Terminal** y ejecuta
+`psql -U postgres -d finanzas`; después pega el bloque SQL de abajo.
+
+Con acceso al servidor:
 
 ```bash
 docker compose exec -T postgres psql -U postgres -d finanzas -v ON_ERROR_STOP=1 <<'SQL'
@@ -385,3 +399,6 @@ docker compose up -d
   crea/actualiza el rol de aplicación en cada despliegue, se hace visible el error real de
   conexión en `docker-entrypoint.sh` y se documenta el diagnóstico de despliegues atascados
   (sección 13).
+- 2026-10-22 — El DSN de PostgreSQL se compone en el entrypoint y en `Settings` a partir de
+  `DB_USER`/`DB_PASSWORD`/... con URL-encoding, de modo que una contraseña con `@ : / #` ya no
+  rompe la conexión. `DATABASE_URL` sigue mandando si se define explícitamente.
