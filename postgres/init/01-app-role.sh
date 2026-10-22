@@ -1,9 +1,8 @@
 #!/bin/sh
 # Sincroniza los roles de PostgreSQL con las variables de entorno.
 #
-# Es idempotente y se ejecuta en dos momentos:
-#   - al inicializar un volumen vacio (/docker-entrypoint-initdb.d)
-#   - en cada despliegue (servicio postgres-init, que comparte el socket local)
+# Se ejecuta en cada arranque del contenedor de postgres (ver entrypoint.sh) y
+# es idempotente.
 #
 # La conexion se hace por el socket Unix local, cuyas reglas de pg_hba.conf son
 # "trust" por defecto en la imagen oficial: asi el rol de aplicacion se puede
@@ -26,32 +25,29 @@ fi
 
 PORT="${PGPORT:-5432}"
 
-# Destino de la conexion: preferimos el socket Unix local (autenticacion trust);
-# si no existe, se cae a TCP con la contrasena del superusuario.
+# Destino de la conexion:
+#   - PGSOCKET_DIR: socket concreto (tests o despliegues con ruta fija).
+#   - PGHOST: fallback por TCP con la contrasena del superusuario.
+#   - sin nada: socket Unix por defecto de psql, que coincide con el del
+#     servidor. Es el caso normal dentro del contenedor de postgres y no
+#     depende de en que directorio concreto cree el socket el servidor.
 CONN_ARGS=""
-SOCKET_DIR=""
-for dir in ${PGSOCKET_DIR:-/var/run/postgresql} /tmp; do
-  if [ -S "$dir/.s.PGSQL.$PORT" ]; then
-    SOCKET_DIR="$dir"
-    CONN_ARGS="-h $SOCKET_DIR -p $PORT"
-    break
-  fi
-done
-
-if [ -z "$CONN_ARGS" ]; then
-  if [ -n "${PGHOST:-}" ]; then
-    CONN_ARGS="-h $PGHOST -p $PORT"
-    echo "Socket local no disponible: se usa TCP contra $PGHOST:$PORT" >&2
-  else
-    echo "No se encuentra el socket de PostgreSQL en ${PGSOCKET_DIR:-/var/run/postgresql} ni en /tmp" >&2
-    exit 1
-  fi
+if [ -n "${PGSOCKET_DIR:-}" ]; then
+  CONN_ARGS="-h $PGSOCKET_DIR -p $PORT"
+elif [ -n "${PGHOST:-}" ]; then
+  CONN_ARGS="-h $PGHOST -p $PORT"
+  echo "Socket local no disponible: se usa TCP contra $PGHOST:$PORT" >&2
+else
+  echo "Conexion por el socket Unix local por defecto de psql." >&2
 fi
 
 # El superusuario real puede tener otro nombre que el del entorno: se prueba
 # con el del entorno y, si no existe, con "postgres".
+CANDIDATES="$POSTGRES_USER"
+[ "$POSTGRES_USER" = "postgres" ] || CANDIDATES="$CANDIDATES postgres"
+
 SUPERUSER=""
-for candidate in "$POSTGRES_USER" postgres; do
+for candidate in $CANDIDATES; do
   # shellcheck disable=SC2086
   if psql $CONN_ARGS -U "$candidate" -d postgres -tAc 'SELECT 1' >/dev/null 2>&1; then
     SUPERUSER="$candidate"
@@ -60,14 +56,14 @@ for candidate in "$POSTGRES_USER" postgres; do
 done
 
 if [ -z "$SUPERUSER" ]; then
-  echo "No se puede conectar como superusuario ($CONN_ARGS)" >&2
+  echo "No se puede conectar como superusuario (probados: $CANDIDATES)." >&2
+  echo "Si el volumen se inicializo con otro superusuario, define POSTGRES_ADMIN_USER con ese nombre." >&2
   exit 1
 fi
 
-echo "Sincronizando roles con el superusuario '$SUPERUSER' ($CONN_ARGS)..."
+echo "Sincronizando roles con el superusuario '$SUPERUSER'..."
 
-# shellcheck disable=SC2086
-psql $CONN_ARGS -U "$SUPERUSER" -d postgres \
+if ! psql $CONN_ARGS -U "$SUPERUSER" -d postgres \
   -v ON_ERROR_STOP=1 \
   -v admin_user="$POSTGRES_USER" \
   -v admin_password="$ADMIN_PASSWORD" \
@@ -95,12 +91,20 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'db_name') \gexec
 
 SELECT format('ALTER DATABASE %I OWNER TO %I', :'db_name', :'app_user') \gexec
 EOSQL
+then
+  echo "No se pudieron sincronizar los roles: revisa el error de PostgreSQL anterior" >&2
+  exit 1
+fi
 
-psql $CONN_ARGS -U "$SUPERUSER" -d "$POSTGRES_DB" \
+if ! psql $CONN_ARGS -U "$SUPERUSER" -d "$POSTGRES_DB" \
   -v ON_ERROR_STOP=1 \
   -v app_user="$APP_DB_USER" <<'EOSQL'
 SELECT format('ALTER SCHEMA public OWNER TO %I', :'app_user') \gexec
 GRANT ALL ON SCHEMA public TO :"app_user";
 EOSQL
+then
+  echo "No se pudieron aplicar los permisos del esquema public en '$POSTGRES_DB'" >&2
+  exit 1
+fi
 
 echo "Roles sincronizados: superusuario '$POSTGRES_USER', aplicacion '$APP_DB_USER' sobre la base '$POSTGRES_DB'."

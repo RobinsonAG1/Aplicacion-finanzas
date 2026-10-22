@@ -38,20 +38,22 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 |---|---|---|---|
 | `web` | `nginxinc/nginx-unprivileged:1.27-alpine` (digest fijado) | 8080 (único expuesto a Coolify) | ninguna |
 | `backend` | `python:3.12-slim` (digest fijado) | 4000 | ninguna |
-| `postgres` | `postgres:16-alpine` (digest fijado) | 5432 (solo red interna) | volumen `postgres_data` + `pg_socket` |
-| `postgres-init` | `postgres:16-alpine` (digest fijado) | — (tarea de un solo uso) | `pg_socket` (socket local compartido) |
+| `postgres` | `postgres:16-alpine` (digest fijado) | 5432 (solo red interna) | volumen `postgres_data` |
 
 - No se publica ningún puerto en el host (`ports:` no existe en el compose).
 - `backend` y `postgres` solo son alcanzables por nombre de servicio dentro de la red del compose.
 - El backend aplica `alembic upgrade head` en cada arranque (`backend/docker-entrypoint.sh`).
-- `postgres-init` crea o actualiza los roles **en cada despliegue** y termina con
-  código 0; `backend` no arranca hasta que termina (`service_completed_successfully`).
+- El contenedor de `postgres` usa un **entrypoint propio** (`postgres/init/entrypoint.sh`) que
+  arranca el entrypoint oficial en segundo plano y, en cuanto el servidor real acepta
+  conexiones, sincroniza los roles **en cada arranque** (`postgres/init/01-app-role.sh`).
+  El healthcheck solo da el contenedor por sano cuando esa sincronización ha terminado
+  (marcador `/tmp/roles-synced`), así que `backend` no arranca antes de que el rol exista.
   Esto evita el fallo clásico de un volumen ya inicializado sin rol, o de un
   `APP_DB_PASSWORD` cambiado después del primer despliegue.
-- `postgres-init` entra a PostgreSQL por el **socket Unix local** (volumen `pg_socket`),
-  que en la imagen oficial autentica con `trust`. Por eso puede crear y sincronizar los
-  roles aunque la contraseña guardada en el volumen no coincida con la del entorno
-  (típico cuando el volumen se inicializó con otra configuración).
+- La sincronización entra a PostgreSQL por el **socket Unix local**, que en la imagen oficial
+  autentica con `trust`. Por eso puede crear y sincronizar los roles aunque la contraseña
+  guardada en el volumen no coincida con la del entorno (típico cuando el volumen se
+  inicializó con otra configuración). No hace falta compartir el socket entre contenedores.
 - Una sola réplica del backend: el rate limit es en memoria y las migraciones corren en el
   entrypoint.
 
@@ -67,6 +69,7 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 | `frontend/Dockerfile` | Multi-stage: build Vite + runtime nginx unprivileged |
 | `frontend/nginx.conf` | SPA fallback, proxy `/api`, cabeceras reenviadas |
 | `frontend/security-headers.conf` | CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
+| `postgres/init/entrypoint.sh` | Entrypoint del contenedor `postgres`: arranca el servidor y sincroniza los roles |
 | `postgres/init/01-app-role.sh` | Crea/actualiza el rol de aplicación (mínimo privilegio) |
 | `.github/workflows/ci.yml` | Lint, tipos, tests, build, smoke del compose y escaneo de seguridad |
 
@@ -195,8 +198,8 @@ docker compose exec -T postgres sh -lc 'dropdb -U "$POSTGRES_USER" finanzas_rest
 **Nunca** usar `docker compose down -v` como parte de una recuperación: elimina el volumen y
 los datos.
 
-El script `postgres/init/01-app-role.sh` lo ejecuta el servicio `postgres-init` en **cada
-despliegue**, así que los roles quedan sincronizados con `APP_DB_PASSWORD` sin recrear el
+El script `postgres/init/01-app-role.sh` lo ejecuta el entrypoint del contenedor `postgres` en
+**cada arranque**, así que los roles quedan sincronizados con `APP_DB_PASSWORD` sin recrear el
 volumen. Entra por el socket local (`trust`), por lo que funciona incluso si el volumen se
 inicializó con otras credenciales. Si aun así falla, ver la sección 13.
 
@@ -301,8 +304,8 @@ Los digests están fijados para que un redespliegue no cambie de versión sin de
 
 ### Cambiar `APP_DB_PASSWORD`
 
-Actualiza la variable en Coolify y redespliega: el servicio `postgres-init` sincroniza la
-contraseña del rol en cada despliegue. Para aplicarlo sin redesplegar:
+Actualiza la variable en Coolify y redespliega: el entrypoint del contenedor `postgres`
+sincroniza la contraseña del rol en cada arranque. Para aplicarlo sin redesplegar:
 
 ```bash
 docker compose exec postgres psql -U postgres -d finanzas
@@ -339,36 +342,39 @@ puede conectarse a PostgreSQL con el rol de aplicación**.
 
 ### 13.0 El despliegue falla antes: `service "postgres-init" didn't complete successfully: exit 2`
 
-Si el log de despliegue dice esto, el problema está en `postgres-init`, no en el backend: el
-contenedor `postgres` está *healthy* pero el script de roles no pudo **conectar**. Causas
-típicas: el volumen ya estaba inicializado con otras credenciales (otra contraseña, otro
-usuario o otra base) y por eso el rol de aplicación nunca se creó o quedó con otra clave.
+Este error era del diseño anterior (un servicio aparte, `postgres-init`, que entraba por TCP).
+**Ese servicio ya no existe**: la sincronización de roles se hace dentro del contenedor de
+`postgres`, por su socket Unix local (`trust`), en cuanto el servidor real acepta conexiones.
 
-Con el diseño actual esto ya no debería ocurrir: `postgres-init` entra por el **socket Unix
-local** del contenedor `postgres` (autenticación `trust` en la imagen oficial) y sincroniza
-los roles con las variables del entorno. Si vuelve a aparecer, mira los logs del contenedor
-`postgres-init` en Coolify: el mensaje concreta dice si no encuentra el socket, si no puede
-entrar como superusuario o qué sentencia SQL falló.
+Si vuelve a aparecer un fallo equivalente, el problema está en el script de roles, no en el
+backend: el contenedor `postgres` está *healthy* pero el script no pudo **conectar** o una
+sentencia SQL falló. Causa típica: el volumen ya estaba inicializado con otras credenciales
+(otra contraseña, otro usuario o otra base).
+
+El healthcheck de `postgres` exige el marcador `/tmp/roles-synced` (lo escribe el entrypoint
+cuando la sincronización termina), así que un fallo de la sincronización deja el contenedor en
+*unhealthy* y el deployment se detiene con el error en los logs del contenedor `postgres`.
 
 ### 13.1 Ver el error real
 
-Sin acceso por SSH: en Coolify, abre el deployment → contenedor `backend` → botón de **logs**
-(o *Show logs*). Ahí está la salida real del entrypoint.
+Sin acceso por SSH: en Coolify, abre el deployment → contenedor `backend` (o `postgres`, que es
+donde vive la sincronización de roles) → botón de **logs** (o *Show logs*). Ahí está la salida
+real del entrypoint.
 
 Con acceso al servidor:
 
 ```bash
 docker compose ps -a                 # el backend sale/reinicia en bucle
 docker compose logs --tail=100 backend
-docker compose logs postgres-init
+docker compose logs --tail=100 postgres   # aquí está la sincronización de roles
 ```
 
 El entrypoint imprime el error de conexión real (no lo oculta). Los mensajes típicos:
 
 | Error | Causa | Solución |
 |---|---|---|
-| `role "finanzas" does not exist` | El rol no se creó (volumen ya inicializado sin el script) | `postgres-init` lo crea en cada despliegue; si falla, ver 13.0 |
-| `password authentication failed for user "finanzas"` | `APP_DB_PASSWORD` no coincide con el del rol | `postgres-init` lo sincroniza; si falla, ver 13.0 y 13.2 |
+| `role "finanzas" does not exist` | El rol no se creó (volumen ya inicializado sin el script) | El entrypoint de `postgres` lo crea en cada arranque; si falla, ver 13.0 |
+| `password authentication failed for user "finanzas"` | `APP_DB_PASSWORD` no coincide con el del rol | El entrypoint de `postgres` lo sincroniza; si falla, ver 13.0 y 13.2 |
 | `invalid dsn` / `could not translate host name` | La contraseña tiene caracteres que rompen la URL (`@`, `:`, `#`, `/`) | Ya no ocurre: el DSN se construye con URL-encoding. Si aparece, hay un `DATABASE_URL` manual definido |
 
 ### 13.2 Crear o sincronizar el rol a mano
@@ -424,3 +430,9 @@ docker compose up -d
   que autentica con `trust`, y sincroniza superusuario, rol de aplicación y base de datos con
   las variables del entorno. Resuelve el `exit 2` observado cuando el volumen ya estaba
   inicializado con otras credenciales (sección 13.0).
+- 2026-10-22 — La sincronización de roles se traslada **dentro** del contenedor de `postgres`
+  (entrypoint propio `postgres/init/entrypoint.sh`) y se elimina el servicio `postgres-init` y el
+  volumen `pg_socket`: entrar por el socket local del propio contenedor no depende de compartir
+  rutas entre contenedores (en `postgres:16-alpine` el socket no siempre está en
+  `/var/run/postgresql`). El healthcheck de `postgres` exige el marcador `/tmp/roles-synced`, de
+  modo que `backend` no arranca hasta que el rol de aplicación existe.

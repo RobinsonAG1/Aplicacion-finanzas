@@ -5,6 +5,13 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 60s
+    # El entrypoint oficial se lanza en segundo plano y, cuando el servidor real
+    # ya acepta conexiones, sincroniza los roles con el entorno por el socket
+    # Unix local (autenticacion trust). Asi el rol de aplicacion queda correcto
+    # en cada despliegue aunque la contrasena guardada en el volumen no
+    # coincida con la del entorno.
+    entrypoint: ['/bin/sh', '/init/entrypoint.sh']
+    command: ['postgres']
     environment:
       # Superusuario: solo inicializa la BD y ejecuta el healthcheck.
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
@@ -15,12 +22,12 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Socket local compartido: permite a postgres-init entrar por el socket
-      # (autenticacion trust) sin depender de la contrasena del volumen.
-      - pg_socket:/var/run/postgresql
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+      - ./postgres/init:/init:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      # El marcador lo escribe el entrypoint cuando los roles ya estan
+      # sincronizados: el contenedor no esta sano hasta que el rol de
+      # aplicacion existe.
+      test: ['CMD-SHELL', 'test -f /tmp/roles-synced && pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -37,38 +44,6 @@ services:
       options:
         max-size: '10m'
         max-file: '3'
-
-  postgres-init:
-    # Tarea de un solo uso: crea/actualiza los roles en CADA despliegue.
-    # El directorio initdb.d solo se ejecuta con el volumen vacio, asi que un
-    # volumen ya inicializado (o un APP_DB_PASSWORD cambiado) se quedaria sin rol
-    # valido. Entra por el socket local del contenedor postgres (trust), por lo
-    # que funciona aunque la contrasena del volumen no coincida con la del entorno.
-    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGSOCKET_DIR: /var/run/postgresql
-      PGPORT: '5432'
-      # Fallback por TCP si el socket local no estuviera disponible.
-      PGHOST: postgres
-      # PGPASSWORD solo se usa si el socket exigiera contrasena (configuracion
-      # alternativa de initdb); con trust se ignora.
-      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}
-      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-finanzas}
-      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}
-      APP_DB_USER: ${APP_DB_USER:-finanzas}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
-    volumes:
-      - pg_socket:/var/run/postgresql
-      - ./postgres/init:/init:ro
-    # Se invoca con sh explicito: no depende del bit de ejecucion en git.
-    entrypoint: ['/bin/sh', '-c', 'sh /init/01-app-role.sh']
-    restart: 'no'
-    networks:
-      - default
 
   backend:
     build:
@@ -103,8 +78,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      postgres-init:
-        condition: service_completed_successfully
     # Solo alcanzable por nombre de servicio desde la red interna.
     expose:
       - '4000'
@@ -161,7 +134,6 @@ services:
 
 volumes:
   postgres_data:
-  pg_socket:
 
 networks:
   coolify:
