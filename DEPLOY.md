@@ -38,18 +38,17 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 |---|---|---|---|
 | `web` | `nginxinc/nginx-unprivileged:1.27-alpine` | 8080 (único expuesto a Coolify) | ninguna |
 | `backend` | `python:3.12-slim` | 4000 | ninguna |
-| `postgres` | imagen propia sobre `postgres:16-alpine` (`postgres/Dockerfile`) | 5432 (solo red interna) | volumen `postgres_data` |
+| `postgres` | `postgres:16-alpine` | 5432 (solo red interna) | volumen `postgres_data` |
 
 - No se publica ningún puerto en el host (`ports:` no existe en el compose).
 - `backend` y `postgres` solo son alcanzables por nombre de servicio dentro de la red del compose.
 - El backend aplica `alembic upgrade head` en cada arranque (`backend/docker-entrypoint.sh`).
-- El rol de aplicación lo crea `postgres/init/01-app-role.sh`, que va **dentro de la imagen** de
-  postgres (`postgres/Dockerfile` lo copia a `/docker-entrypoint-initdb.d`) y el entrypoint oficial
-  ejecuta **al inicializar el volumen**, con las variables `APP_DB_USER`/`APP_DB_PASSWORD` del
-  entorno. El backend se conecta con ese rol, que no tiene privilegios de superusuario.
-- El script es idempotente y se puede volver a ejecutar a mano dentro del contenedor para
-  resincronizar el rol (ver 13.2). Si se cambia `APP_DB_PASSWORD` después del primer despliegue,
-  hay que ejecutarlo de nuevo o recrear el volumen (ver 11).
+- El backend se conecta con `POSTGRES_ADMIN_USER`/`POSTGRES_ADMIN_PASSWORD`, el mismo usuario con
+  el que PostgreSQL inicializa el volumen: una sola credencial, sin rol aparte ni scripts de
+  inicialización que puedan quedar desincronizados. Si el volumen se creó con otra contraseña,
+  hay que recrearlo (13.3) o cambiarla dentro de PostgreSQL (13.2).
+- Sin healthchecks en el compose: `backend` reintenta la conexión durante 2 minutos y Coolify no
+  falla el despliegue por un contenedor aún arrancando. El estado real se ve en los logs.
 - Una sola réplica del backend: el rate limit es en memoria y las migraciones corren en el
   entrypoint.
 
@@ -59,14 +58,12 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 
 | Archivo | Función |
 |---|---|
-| `docker-compose.yml` | Compose de producción (build + variables + healthchecks + límites + logs) |
-| `backend/Dockerfile` | Imagen del API, usuario `appuser` (uid 10001), healthcheck con `curl` |
+| `docker-compose.yml` | Compose de producción (build + variables + red de Coolify) |
+| `backend/Dockerfile` | Imagen del API, usuario `appuser` (uid 10001) |
 | `backend/docker-entrypoint.sh` | Migraciones + arranque de uvicorn con `--proxy-headers` |
 | `frontend/Dockerfile` | Multi-stage: build Vite + runtime nginx unprivileged |
 | `frontend/nginx.conf` | SPA fallback, proxy `/api`, cabeceras reenviadas |
 | `frontend/security-headers.conf` | CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
-| `postgres/Dockerfile` | Imagen propia de PostgreSQL con el script de inicialización dentro (sin bind mounts) |
-| `postgres/init/01-app-role.sh` | Crea el rol de aplicación (mínimo privilegio) al inicializar el volumen |
 | `.github/workflows/ci.yml` | Lint, tipos, tests, build, smoke del compose y escaneo de seguridad |
 
 ---
@@ -88,21 +85,18 @@ Marcadas con `${VAR:?}` en el compose: el despliegue falla si faltan.
 
 | Variable | Obligatoria | Propósito |
 |---|---|---|
-| `POSTGRES_ADMIN_USER` | No (def. `postgres`) | Superusuario del contenedor |
-| `POSTGRES_ADMIN_PASSWORD` | Sí | Superusuario del contenedor (init y healthcheck) |
-| `APP_DB_USER` | No (def. `finanzas`) | Rol de aplicación usado por el backend |
-| `APP_DB_PASSWORD` | Sí | Password del rol de aplicación (el entrypoint la URL-encodea al montar el DSN) |
+| `POSTGRES_ADMIN_USER` | No (def. `postgres`) | Usuario de PostgreSQL (lo usan el contenedor y el backend) |
+| `POSTGRES_ADMIN_PASSWORD` | Sí | Contraseña de ese usuario (`${VAR:?}`) |
 | `POSTGRES_DB` | No (def. `finanzas`) | Nombre de la base |
-| `DATABASE_URL` | No | Solo si se quiere forzar el DSN completo; por defecto se construye con `DB_*` |
-| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | No | Override del DSN. Por defecto: `postgres` / `5432` / `POSTGRES_DB` / `APP_DB_USER` / `APP_DB_PASSWORD` |
 | `CORS_ORIGIN` | Sí | Origen público exacto: `https://<dominio>` **sin barra final** |
 | `LOG_LEVEL` | No (def. `info`) | Nivel de logs (`fatal`…`trace`, `silent`) |
 | `JWT_ACCESS_SECRET` | Sí | Secreto de access tokens (≥32 caracteres) |
 | `JWT_REFRESH_SECRET` | Sí | Secreto de refresh tokens (≥32 caracteres, **distinto** del anterior) |
-| `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | No (900 / 604800) | TTL en segundos |
-| `FORWARDED_ALLOW_IPS` | No (def. `*`) | IPs de proxy confiables para `X-Forwarded-*` |
 | `DEMO_SEED_ENABLED` | No (def. `true`) | Crea datos de muestra solo si no existe la cuenta demo; `false` lo desactiva |
-| `SEED_FORCE` | No (def. `false`) | Solo para ejecutar el seed destructivo de forma manual |
+
+Opcionales con valor por defecto en el código (no hace falta definirlas): `JWT_ACCESS_TTL`
+(900 s), `JWT_REFRESH_TTL` (604800 s), `FORWARDED_ALLOW_IPS` (`*`), `DATABASE_URL` (se construye
+con URL-encoding a partir de `POSTGRES_DB`/`POSTGRES_ADMIN_*`).
 
 Generación de secretos (ejecutar donde prefieras, no pegarlos en Git):
 
@@ -196,11 +190,6 @@ docker compose exec -T postgres sh -lc 'dropdb -U "$POSTGRES_USER" finanzas_rest
 **Nunca** usar `docker compose down -v` como parte de una recuperación: elimina el volumen y
 los datos.
 
-El script `postgres/init/01-app-role.sh` lo ejecuta el entrypoint de postgres **al inicializar el
-volumen** (directorio `/docker-entrypoint-initdb.d`). Si el volumen ya estaba inicializado, el
-script no se ejecuta: en ese caso hay que ejecutarlo a mano (sección 13.2) o recrear el volumen
-(sección 13.3).
-
 ---
 
 ## 8. Rollback
@@ -293,36 +282,23 @@ limit). Si aparece la IP del proxy, revisar `FORWARDED_ALLOW_IPS` y el `X-Forwar
 
 ### Actualizar una imagen base
 
-Las imágenes usan tags normales: `postgres:16-alpine` en `postgres/Dockerfile`, `python:3.12-slim`
+Las imágenes usan tags normales: `postgres:16-alpine` en el compose, `python:3.12-slim`
 en `backend/Dockerfile`, `node:22-slim` y `nginxinc/nginx-unprivileged:1.27-alpine` en
 `frontend/Dockerfile`. No hay digests fijados: un redespliegue puede traer una revisión menor
 nueva del tag. Para fijar una versión concreta, cambia el tag (por ejemplo
 `postgres:16.4-alpine`), redespliega y repite las pruebas de humo.
 
-### HEALTHCHECKs
+### Cambiar la contraseña de PostgreSQL
 
-Solo `postgres` (`pg_isready`) y `backend` (`curl` a `/api/health`) tienen healthcheck en el
-compose: son los que ordenan el arranque (`depends_on: service_healthy`). `web` no tiene.
-
-### Cambiar `APP_DB_PASSWORD`
-
-Actualiza la variable en Coolify, **redespliega** (para que el contenedor de postgres reciba la
-nueva variable) y **ejecuta el script de roles** (sección 13.2): el directorio
-`/docker-entrypoint-initdb.d` solo se procesa al crear el volumen, así que un cambio de
-`APP_DB_PASSWORD` no se aplica solo. Sin redesplegar:
+`POSTGRES_ADMIN_PASSWORD` solo se aplica al **inicializar** el volumen. Para cambiarla después,
+actualiza la variable en Coolify y haz `ALTER ROLE` dentro de PostgreSQL (con el usuario dueño):
 
 ```bash
-docker compose exec -T postgres sh /docker-entrypoint-initdb.d/01-app-role.sh
+docker compose exec postgres psql -U postgres -d postgres -c "ALTER ROLE postgres WITH PASSWORD 'nueva_password';"
 ```
 
-O, a mano, dentro de `psql`:
-
-```bash
-docker compose exec postgres psql -U postgres -d finanzas
--- dentro de psql (sustituir por el usuario y la password reales, no versionarlos):
--- ALTER ROLE finanzas WITH PASSWORD 'nueva_password';
-\q
-```
+Y redespliega para que el backend reciba la nueva variable. Si prefieres no tocar la BD, recrea el
+volumen (sección 13.3): el usuario se crea de nuevo con la contraseña del entorno.
 
 La contraseña admite cualquier carácter: el entrypoint construye el DSN con URL-encoding
 (`quote` de usuario y password), así que `@ : / #` no la rompen. Aun así, hexadecimal es lo
@@ -336,7 +312,7 @@ recomendado (`python -c "import secrets; print(secrets.token_hex(32))"`).
 |---|---|
 | Rate limit en memoria (una réplica obligatoria) | Documentado, aceptado |
 | `FORWARDED_ALLOW_IPS='*'` confía en el saneado de `X-Forwarded-For` por Traefik | Aceptado; verificar IP real en logs tras desplegar |
-| Healthchecks propios en las imágenes base (ya retirados) | Resuelto: solo `postgres` y `backend` tienen healthcheck, en el compose |
+| Healthchecks: ninguno | Aceptado: el backend reintenta 2 min; Coolify no falla el deploy por eso |
 | Imágenes por tag (no por digest) | Aceptado: un redeploy puede traer una revisión menor nueva del tag |
 | `SEED_FORCE` presente en el entorno del backend (por defecto `false`) | Aceptado; solo se usa en el `exec` manual |
 | Backups programados y restauración probada | **Pendiente (bloqueante)** |
@@ -351,20 +327,23 @@ Si el log de despliegue se queda en `Container backend-... Waiting`, el contened
 llega a estado *healthy* y Coolify espera indefinidamente. Causa habitual: **el backend no
 puede conectarse a PostgreSQL con el rol de aplicación**.
 
-### 13.0 `role "finanzas" does not exist` o `password authentication failed`
+### 13.0 `password authentication failed for user "postgres"`
 
-Causa: el volumen `postgres_data` **ya estaba inicializado** (heredado de otra aplicación o de un
-despliegue anterior con otras credenciales). El directorio `/docker-entrypoint-initdb.d` solo se
-procesa cuando el volumen está vacío, así que el script que crea el rol de aplicación no llegó
-a ejecutarse.
+Causa: el volumen `postgres_data` **ya estaba inicializado** (de otra aplicación o de un
+despliegue anterior) con otra contraseña. `POSTGRES_ADMIN_PASSWORD` solo se aplica al crear el
+volumen, así que la contraseña guardada y la del entorno no coinciden.
 
-Solución: ejecutar el script a mano (13.2) o recrear el volumen (13.3). No hace falta tocar el
-compose ni añadir servicios: el rol se crea con el script que ya está montado.
+Solución: cambiar la contraseña dentro de PostgreSQL (13.2) o recrear el volumen (13.3).
 
 ### 13.1 Ver el error real
 
 Sin acceso por SSH: en Coolify, abre el deployment → contenedor `backend` → botón de **logs**
-(o *Show logs*). Ahí está la salida real del entrypoint.
+(o *Show logs*). Ahí está la salida real del entrypoint. También puedes ejecutar en la terminal
+del backend:
+
+```bash
+python -m alembic upgrade head
+```
 
 Con acceso al servidor:
 
@@ -374,46 +353,30 @@ docker compose logs --tail=100 backend
 docker compose logs --tail=100 postgres   # aquí se ve la inicialización del volumen
 ```
 
-El entrypoint imprime el error de conexión real (no lo oculta). Los mensajes típicos:
+Los mensajes típicos:
 
 | Error | Causa | Solución |
 |---|---|---|
-| `role "finanzas" does not exist` | El volumen ya estaba inicializado y el script no se ejecutó | Ejecutar el script a mano (13.2) o recrear el volumen (13.3) |
-| `password authentication failed for user "finanzas"` | `APP_DB_PASSWORD` no coincide con el del rol | Ejecutar el script a mano (13.2) o recrear el volumen (13.3) |
-| `invalid dsn` / `could not translate host name` | La contraseña tiene caracteres que rompen la URL (`@`, `:`, `#`, `/`) | Ya no ocurre: el DSN se construye con URL-encoding. Si aparece, hay un `DATABASE_URL` manual definido |
+| `password authentication failed for user "postgres"` | La contraseña del volumen no coincide con `POSTGRES_ADMIN_PASSWORD` | Cambiarla en la BD (13.2) o recrear el volumen (13.3) |
+| `database "finanzas" does not exist` | Se cambió `POSTGRES_DB` después de inicializar el volumen | Recrear el volumen (13.3) |
+| `invalid dsn` / `could not translate host name` | `DATABASE_URL` manual mal formado | Quitarlo: el entrypoint construye el DSN solo |
 
-### 13.2 Crear o sincronizar el rol a mano
+El backend reintenta la conexión durante 2 minutos y luego sale; el contenedor se reinicia en
+bucle hasta que la conexión funcione.
 
-El script del compose hace exactamente esto (es idempotente) y usa las variables del contenedor
-(`APP_DB_USER`, `APP_DB_PASSWORD`, `POSTGRES_DB`, `POSTGRES_USER`):
+### 13.2 Cambiar la contraseña dentro de PostgreSQL
+
+Sin perder datos:
 
 ```bash
-docker compose exec -T postgres sh /docker-entrypoint-initdb.d/01-app-role.sh
+docker compose exec postgres psql -U postgres -d postgres \
+  -c "ALTER ROLE postgres WITH PASSWORD 'nueva_password';"
 docker compose restart backend
 ```
 
-Sin acceso al servidor, desde la UI de Coolify: contenedor `postgres` → **Execute Command /
-Terminal** → `sh /docker-entrypoint-initdb.d/01-app-role.sh`; después, reinicia el backend.
-
-Si lo prefieres a mano, por si el script no está disponible:
-
-```bash
-docker compose exec -T postgres psql -U postgres -d finanzas -v ON_ERROR_STOP=1 <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finanzas') THEN
-    CREATE ROLE finanzas LOGIN PASSWORD 'PEGA_AQUI_APP_DB_PASSWORD' NOSUPERUSER NOCREATEDB NOCREATEROLE;
-  END IF;
-END
-$$;
-ALTER ROLE finanzas WITH LOGIN PASSWORD 'PEGA_AQUI_APP_DB_PASSWORD' NOSUPERUSER NOCREATEDB NOCREATEROLE;
-ALTER DATABASE finanzas OWNER TO finanzas;
-ALTER SCHEMA public OWNER TO finanzas;
-GRANT ALL ON SCHEMA public TO finanzas;
-SQL
-```
-
-Después, reinicia el backend: `docker compose restart backend`.
+Desde la UI de Coolify: contenedor `postgres` → **Execute Command / Terminal** → el `psql` de
+arriba (después, reinicia `backend`). La nueva contraseña debe ser la misma que pongas en
+`POSTGRES_ADMIN_PASSWORD` en Coolify.
 
 ### 13.3 Empezar de cero (borra los datos)
 
@@ -428,12 +391,12 @@ docker compose up -d
 
 Sin acceso al servidor, desde la UI de Coolify (el volumen se vacía desde dentro del contenedor
 `postgres`, que corre como root; el servidor se cae y el contenedor se reinicia solo, ya con el
-volumen vacío y el entrypoint oficial inicializándolo con las variables del entorno):
+volumen vacío y PostgreSQL inicializándolo con las variables del entorno):
 
 1. Contenedor `postgres` → **Execute Command / Terminal**.
 2. `rm -rf /var/lib/postgresql/data/*`
 3. Reinicia el contenedor `postgres` (o redespliega) y revisa sus logs: debe aparecer
-   `Rol de aplicacion 'finanzas' listo sobre la base 'finanzas'.`
+   `database system is ready to accept connections`.
 
 ---
 
@@ -476,3 +439,9 @@ volumen vacío y el entrypoint oficial inicializándolo con las variables del en
   vacío (directorio sin montar), así que el script no existía en el contenedor y el rol nunca se
   creaba. Si el contexto no trae `init/`, el build falla de forma visible en vez de arrancar sin
   el script.
+- 2026-10-22 — Se elimina la separación de roles: el backend usa `POSTGRES_ADMIN_USER`/
+  `POSTGRES_ADMIN_PASSWORD`, el mismo usuario con el que PostgreSQL inicializa el volumen. Se
+  borran `postgres/Dockerfile`, `postgres/init/01-app-role.sh` y las variables `APP_DB_*`. El
+  compose queda en 3 servicios sin `healthcheck`, sin `depends_on: condition`, sin `deploy`, sin
+  `logging`, sin `expose` y sin `SEED_FORCE`/`DATABASE_URL`; `backend` reintenta la conexión 2
+  minutos y Coolify ya no puede fallar el despliegue por un contenedor aún arrancando.

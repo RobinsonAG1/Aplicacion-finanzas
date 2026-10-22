@@ -845,7 +845,7 @@ paneles.
 | 6 | Cabeceras de seguridad | OK | Middleware de cabeceras + CSP/HSTS/`X-Frame-Options`/`Referrer-Policy`/`Permissions-Policy` en nginx |
 | 7 | CSV (inyección / límites) | OK | Allowlist en import; saneo anti fórmula en export; tope de 5000 filas y 2000 caracteres por campo |
 | 8 | Seed en producción | OK | `scripts/seed.py` aborta si `APP_ENV=production` salvo `SEED_FORCE=true` |
-| 9 | Exposición de PostgreSQL | OK | PostgreSQL solo en la red privada del compose (sin puerto en el host); el backend usa un rol sin superusuario (`postgres/init/01-app-role.sh`) |
+| 9 | Exposición de PostgreSQL | OK | PostgreSQL solo en la red privada del compose (sin puerto en el host); el backend usa el mismo usuario que inicializa el volumen (simplificación consciente: sin rol separado) |
 | 10 | Superficie de imagen / dependencias | OK | Backend `USER appuser`; nginx con `nginxinc/nginx-unprivileged` (no root); `pip-audit` + `npm audit` + Trivy en CI |
 | 11 | Fuga de datos en logs | OK | `redact_processor` de structlog para `Authorization`, cookies y campos sensibles |
 
@@ -863,8 +863,7 @@ paneles.
 
 **Fase B — Infraestructura y empaquetado**
 - Cabeceras de seguridad en nginx (`frontend/security-headers.conf`) — punto 6.
-- `docker-compose` deja PostgreSQL y el backend en la red privada, sin puertos en el host;
-  el backend usa un rol de mínimo privilegio — punto 9.
+- `docker-compose` deja PostgreSQL y el backend en la red privada, sin puertos en el host — punto 9.
 - nginx sobre `nginxinc/nginx-unprivileged` (no root) — punto 10.
 - `pip-audit` + `npm audit` + Trivy en CI (`trivy-action` fijado por SHA, `v0.36.0`) — punto 10.
 
@@ -878,9 +877,10 @@ paneles.
 Docker no está disponible en el entorno local, así que B1/B2/B3 se validaron con las piezas
 nativas (PostgreSQL 18 y nginx), replicando la lógica de los archivos que usa compose.
 
-**B2 — rol de BD de mínimo privilegio** (`postgres/init/01-app-role.sh`). Se ejecutaron las
-mismas sentencias sobre un rol y una base desechables (`b2_app` / `b2_verify`) con `psql` y se
-comprobó el estado resultante:
+**B2 — (histórico, ya no aplica).** La verificación de abajo se hizo cuando el backend usaba un rol
+de PostgreSQL de mínimo privilegio (`postgres/init/01-app-role.sh`). Ese rol se retiró: el backend
+usa ahora `POSTGRES_ADMIN_USER`/`POSTGRES_ADMIN_PASSWORD`, el mismo usuario con el que se
+inicializa el volumen. Se conserva el registro de la prueba:
 
 | Comprobación | Esperado | Obtenido |
 |---|---|---|
@@ -913,7 +913,7 @@ porque el upstream `backend` solo resuelve dentro de compose. **Observación men
 
 > La prueba end-to-end en Linux la ejecuta el job `docker` del CI: construye las imágenes,
 > levanta el compose, aplica migraciones, ejecuta el seed y prueba healthcheck, frontend y
-> login. Esto confirma el "non-root" y el rol de BD dentro de contenedor.
+> login. Esto confirma el "non-root" y la conexión a la BD dentro de contenedor.
 
 ---
 
@@ -949,16 +949,16 @@ El compose de producción no publica puertos en el host. Coolify inyecta estas v
 
 | Variable | Def. | Descripción |
 |---|---|---|
-| `POSTGRES_ADMIN_USER` / `POSTGRES_ADMIN_PASSWORD` | `postgres` / — | Superusuario del contenedor (init y healthcheck) |
-| `APP_DB_USER` | `finanzas` | Rol de aplicación (mínimo privilegio) que usa el backend |
-| `APP_DB_PASSWORD` | — | Contraseña del rol de aplicación; usar valor URL-safe/hexadecimal |
+| `POSTGRES_ADMIN_USER` / `POSTGRES_ADMIN_PASSWORD` | `postgres` / — | Usuario de PostgreSQL: inicializa el volumen y lo usa el backend |
 | `POSTGRES_DB` | `finanzas` | Nombre de la BD |
 | `CORS_ORIGIN` | — | Origen público del frontend (`https://tu-dominio`) |
 | `LOG_LEVEL` | `info` | Nivel de logs |
-| `FORWARDED_ALLOW_IPS` | `*` | IPs de proxy confiables para `X-Forwarded-*` |
+| `DEMO_SEED_ENABLED` | `true` | Crea la cuenta demo si no existe |
 | `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | — | **Obligatorias** (`:?` en compose) |
-| `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | `900` / `604800` | TTL en segundos |
-| `SEED_FORCE` | `false` | Permite que el seed borre datos en producción |
+
+Opcionales con valor por defecto en `app/core/config.py`: `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL`
+(`900` / `604800`), `FORWARDED_ALLOW_IPS` (`*`), `DATABASE_URL` (se compone con URL-encoding).
+`SEED_FORCE` solo se pasa al ejecutar el seed a mano (`docker compose exec -e SEED_FORCE=true`).
 
 Generar secretos:
 
@@ -1087,11 +1087,12 @@ deshabilita en producción.
 
 - **Backend** (`backend/Dockerfile`): `python:3.12-slim`, instala `requirements.txt`, copia
   `app/`, `migrations/`, `alembic.ini`, `scripts/` y el entrypoint con propietario
-  `appuser`, corre como usuario no-root y expone `4000`. El `HEALTHCHECK` vive en el compose
-  (contra `/api/health`). El entrypoint aplica migraciones y arranca Uvicorn con proxy headers.
+  `appuser`, corre como usuario no-root y expone `4000`. El entrypoint espera a PostgreSQL
+  (hasta 2 minutos), aplica migraciones, crea la cuenta demo si falta y arranca Uvicorn con
+  proxy headers.
 - **Frontend** (`frontend/Dockerfile`): build con Vite (`ARG VITE_API_URL=/api`) y runtime
-  `nginx-unprivileged:1.27-alpine` sirviendo `dist`. Sin `HEALTHCHECK`: `web` no lo necesita
-  para arrancar y así se evita depender de `wget` en la imagen.
+  `nginx-unprivileged:1.27-alpine` sirviendo `dist`.
+- **PostgreSQL**: imagen oficial `postgres:16-alpine`, sin personalización.
 
 ### 14.2 nginx (`frontend/nginx.conf`)
 
@@ -1103,10 +1104,10 @@ deshabilita en producción.
 
 ### 14.3 Docker Compose
 
-Servicios: `postgres` (volumen `postgres_data`, healthcheck `pg_isready` por TCP),
-`backend` (depende de `postgres` saludable) y `web` (depende de `backend` saludable). El
-backend lee la BD por el host interno `postgres` y usa el rol de mínimo privilegio creado
-por `postgres/init/01-app-role.sh`.
+Servicios: `postgres` (volumen `postgres_data`), `backend` y `web`. Sin healthchecks ni
+`depends_on: condition`: `backend` reintenta la conexión a PostgreSQL durante 2 minutos y
+Coolify no falla el despliegue por un contenedor aún arrancando. El backend lee la BD por el
+host interno `postgres` con `POSTGRES_ADMIN_USER`/`POSTGRES_ADMIN_PASSWORD`.
 
 **No se publica ningún puerto en el host.** Solo `web` expone el puerto interno `8080` al
 proxy de Coolify. `postgres` y `backend` quedan en la red privada del compose.
@@ -1134,8 +1135,8 @@ proxy de Coolify. `postgres` y `backend` quedan en la red privada del compose.
   `alembic upgrade head`, `ruff check`, `ruff format --check`, `mypy app scripts`,
   `pytest` y `compileall`.
 - **Job `frontend`**: `npm ci`, `typecheck`, `lint`, `test`, `build`.
-- **Job `docker`**: `docker compose config`, build de imágenes, `up --wait`, seed y smoke
-  test de healthcheck, frontend y login. Siempre ejecuta `docker compose down -v`.
+- **Job `docker`**: `docker compose config`, build de imágenes, `up -d`, reintento del smoke
+  test (healthcheck del API, frontend y login). Siempre ejecuta `docker compose down -v`.
 - **Job `security`**: `pip-audit`, `npm audit` y Trivy (imagen fijada por SHA).
 
 Incluye `concurrency` (cancela ejecuciones previas) y `permissions: contents: read`.

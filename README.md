@@ -134,8 +134,8 @@ En desarrollo, la documentacion interactiva esta en `http://localhost:4000/api/d
   `alembic upgrade head`, `ruff check`, `ruff format --check`, `mypy`, `pytest` y
   `compileall`.
 - **Frontend**: `npm ci`, `typecheck`, `lint`, `test` y `build`.
-- **Docker**: valida `docker compose config`, construye ambas imagenes, levanta el stack,
-  ejecuta el seed y prueba healthcheck, frontend y login.
+- **Docker**: valida `docker compose config`, construye las imagenes, levanta el stack y prueba
+  healthcheck del API, frontend y login.
 - **Seguridad**: `pip-audit`, `npm audit` y Trivy.
 
 ## Deploy en Coolify
@@ -150,8 +150,8 @@ El `docker-compose.yml` esta preparado para produccion:
 1. Crear un recurso **Docker Compose** desde el repositorio.
 2. Usar `docker-compose.yml` como compose de produccion.
 3. Definir las variables de `.env.example` en el panel de Coolify:
-   - `POSTGRES_ADMIN_PASSWORD`
-   - `APP_DB_USER`, `APP_DB_PASSWORD` (password URL-safe/hexadecimal)
+   - `POSTGRES_ADMIN_USER` (por defecto `postgres`)
+   - `POSTGRES_ADMIN_PASSWORD` (la usa tanto PostgreSQL como el backend)
    - `POSTGRES_DB`
    - `CORS_ORIGIN=https://tu-dominio`
    - `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
@@ -174,11 +174,10 @@ Datos demo opcionales (destructivo):
 docker compose exec -T -e SEED_FORCE=true backend python -m scripts.seed
 ```
 
-> El rol `APP_DB_USER` se crea solo al inicializar un volumen nuevo (script
-> `postgres/init/01-app-role.sh`, ejecutado por el entrypoint oficial de postgres). Si cambias
-> `APP_DB_PASSWORD` despues del primer despliegue, vuelve a ejecutar ese script dentro del
-> contenedor (`docker compose exec -T postgres sh /docker-entrypoint-initdb.d/01-app-role.sh`) o
-> recrea el volumen de forma consciente.
+> El backend se conecta a PostgreSQL con `POSTGRES_ADMIN_USER`/`POSTGRES_ADMIN_PASSWORD`, el
+> mismo usuario que inicializa el volumen: no hay un rol aparte que se pueda desincronizar. Si
+> cambias esa contrasena despues del primer despliegue, cambiala tambien dentro de PostgreSQL
+> (`ALTER ROLE ... PASSWORD ...`) o recrea el volumen de forma consciente.
 
 ## Roadmap
 

@@ -1,109 +1,52 @@
 services:
   postgres:
-    build:
-      context: ./postgres
+    image: postgres:16-alpine
     restart: unless-stopped
-    init: true
-    stop_grace_period: 60s
     environment:
-      # Superusuario: solo inicializa la BD y ejecuta el healthcheck.
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-finanzas}
-      # Rol de aplicacion (minimo privilegio) que usa el backend.
-      APP_DB_USER: ${APP_DB_USER:-finanzas}
-      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
-      # Solo los datos. El script de roles va dentro de la imagen (postgres/Dockerfile).
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-    networks:
-      - default
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '3'
 
   backend:
     build:
       context: ./backend
     restart: unless-stopped
-    init: true
-    stop_grace_period: 30s
     environment:
-      APP_ENV: production
-      PORT: '4000'
-      # La URL se construye en el entrypoint con URL-encoding: una contrasena con
-      # caracteres especiales (@ : / #) no puede romper el DSN. Si se define
-      # DATABASE_URL explicitamente, esa tiene prioridad.
-      DATABASE_URL: ${DATABASE_URL:-}
-      DB_HOST: ${DB_HOST:-postgres}
-      DB_PORT: ${DB_PORT:-5432}
+      # Mismo usuario con el que se inicializa el volumen: una sola credencial.
+      DB_HOST: postgres
       DB_NAME: ${POSTGRES_DB:-finanzas}
-      DB_USER: ${APP_DB_USER:-finanzas}
-      DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
-      # Origen publico exacto: se usa para CORS y para la validacion CSRF de refresh/logout.
+      DB_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}
       CORS_ORIGIN: ${CORS_ORIGIN:?define CORS_ORIGIN}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?define JWT_ACCESS_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?define JWT_REFRESH_SECRET}
-      # TTL en segundos.
-      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-900}
-      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-604800}
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
-      # Seed de demostracion (no destructivo): solo crea la cuenta demo si no existe.
       DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-true}
-      SEED_FORCE: ${SEED_FORCE:-false}
     depends_on:
-      postgres:
-        condition: service_healthy
-    # Solo alcanzable por nombre de servicio desde la red interna.
+      - postgres
+    # Puerto interno del API (documenta el servicio; no se publica al host).
     expose:
       - '4000'
-    networks:
-      - default
-    healthcheck:
-      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:4000/api/health']
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '3'
 
   web:
     build:
       context: ./frontend
     restart: unless-stopped
-    init: true
-    stop_grace_period: 10s
-    # Coolify enruta el dominio a este puerto interno; no se publica en el host.
+    depends_on:
+      - backend
+    # Coolify asigna el dominio a este puerto interno del contenedor.
     expose:
       - '8080'
-    depends_on:
-      backend:
-        condition: service_healthy
     networks:
       - default
       - coolify
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '3'
 
 volumes:
   postgres_data:
 
 networks:
+  # Red del proxy de Coolify: el dominio entra por aqui hasta 'web'.
   coolify:
     external: true

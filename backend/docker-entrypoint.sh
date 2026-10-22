@@ -22,9 +22,8 @@ print(f'postgresql://{user}:{password}@{host}:{port}/{name}')
   export DATABASE_URL
 fi
 
-# Espera a que PostgreSQL acepte conexiones reales con el rol de aplicacion.
-# pg_isready pasa cuando el proceso arranca, pero el rol de app puede no estar
-# listo aun (el script 01-app-role.sh se ejecuta despues del arranque inicial).
+# Espera a que PostgreSQL acepte conexiones reales (hasta 2 minutos: en el
+# primer arranque el volumen se inicializa antes de aceptar clientes).
 echo "Esperando conexion a PostgreSQL..."
 DB_ERROR=$(mktemp)
 i=0
@@ -45,13 +44,13 @@ asyncio.run(check())
   i=$((i+1))
   echo "PostgreSQL no disponible aun (intento $i/30): $(cat "$DB_ERROR")"
   if [ "$i" -eq 1 ]; then
-    echo "Revisa DATABASE_URL (host, usuario y contrasena) y que el rol exista en PostgreSQL." >&2
+    echo "Revisa DATABASE_URL (host, usuario y contrasena) y que la base exista en PostgreSQL." >&2
   fi
-  if [ "$i" -ge 30 ]; then
+  if [ "$i" -ge 60 ]; then
     echo "Timeout esperando PostgreSQL. Abortando." >&2
-    echo "Si el error indica 'role ... does not exist' o 'password authentication failed':" >&2
-    echo "  el rol de aplicacion lo crea postgres/init/01-app-role.sh al inicializar el volumen." >&2
-    echo "  Revisa los logs del contenedor postgres y ejecuta el script a mano si hace falta." >&2
+    echo "Si el error indica 'password authentication failed':" >&2
+    echo "  POSTGRES_ADMIN_PASSWORD debe coincidir con la usada al inicializar el volumen." >&2
+    echo "  Si el volumen trae otra clave, recrealo (es descartable) o cambia la del usuario." >&2
     exit 1
   fi
   sleep 2
