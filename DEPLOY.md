@@ -36,9 +36,9 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 
 | Servicio | Imagen | Puerto interno | Persistencia |
 |---|---|---|---|
-| `web` | `nginxinc/nginx-unprivileged:1.27-alpine` (digest fijado) | 8080 (único expuesto a Coolify) | ninguna |
-| `backend` | `python:3.12-slim` (digest fijado) | 4000 | ninguna |
-| `postgres` | `postgres:16-alpine` (digest fijado) | 5432 (solo red interna) | volumen `postgres_data` |
+| `web` | `nginxinc/nginx-unprivileged:1.27-alpine` | 8080 (único expuesto a Coolify) | ninguna |
+| `backend` | `python:3.12-slim` | 4000 | ninguna |
+| `postgres` | `postgres:16-alpine` | 5432 (solo red interna) | volumen `postgres_data` |
 
 - No se publica ningún puerto en el host (`ports:` no existe en el compose).
 - `backend` y `postgres` solo son alcanzables por nombre de servicio dentro de la red del compose.
@@ -123,7 +123,9 @@ Reglas:
 - `DEMO_SEED_ENABLED=true` crea al iniciar `demo@finanzas.test` / `Demo1234!` y datos de muestra
   durante el primer despliegue. La contraseña es pública y la cuenta no es privada: úsala solo
   para demostración; los datos y cambios de ese usuario quedan visibles para quien inicie sesión.
-  El seed automático nunca borra otras cuentas ni sobrescribe la cuenta demo ya existente.
+  El seed automático nunca borra otras cuentas ni sobrescribe la cuenta demo ya existente. Si el
+  seed falla, el backend arranca igualmente y deja un aviso en los logs (no bloquea el
+  despliegue).
 - Para desplegar sin la cuenta de demostración, define `DEMO_SEED_ENABLED=false` en Coolify.
 
 ---
@@ -288,14 +290,18 @@ limit). Si aparece la IP del proxy, revisar `FORWARDED_ALLOW_IPS` y el `X-Forwar
 
 ## 11. Mantenimiento
 
-### Actualizar una imagen base (digest fijado)
+### Actualizar una imagen base
 
-1. Consultar el digest actual del tag, por ejemplo:
-   `https://hub.docker.com/v2/repositories/library/postgres/tags/16-alpine`
-2. Sustituir el digest en `docker-compose.yml` o en el `Dockerfile` correspondiente.
-3. Redesplegar y repetir las pruebas de humo.
+Las imágenes usan tags normales (`postgres:16-alpine`, `python:3.12-slim`,
+`node:22-slim`, `nginxinc/nginx-unprivileged:1.27-alpine`), no digests: un redespliegue puede
+traer una revisión menor nueva del tag. Para fijar una versión concreta, cambia el tag (por
+ejemplo `postgres:16.4-alpine`) en `docker-compose.yml` o en el `Dockerfile` correspondiente,
+redespliega y repite las pruebas de humo.
 
-Los digests están fijados para que un redespliegue no cambie de versión sin decisión explícita.
+### HEALTHCHECKs
+
+Solo `postgres` (`pg_isready`) y `backend` (`curl` a `/api/health`) tienen healthcheck en el
+compose: son los que ordenan el arranque (`depends_on: service_healthy`). `web` no tiene.
 
 ### Cambiar `APP_DB_PASSWORD`
 
@@ -329,7 +335,8 @@ recomendado (`python -c "import secrets; print(secrets.token_hex(32))"`).
 |---|---|
 | Rate limit en memoria (una réplica obligatoria) | Documentado, aceptado |
 | `FORWARDED_ALLOW_IPS='*'` confía en el saneado de `X-Forwarded-For` por Traefik | Aceptado; verificar IP real en logs tras desplegar |
-| Healthchecks duplicados en Dockerfile y compose | Aceptado (compose prevalece); pendiente de simplificar |
+| Healthchecks propios en las imágenes base (ya retirados) | Resuelto: solo `postgres` y `backend` tienen healthcheck, en el compose |
+| Imágenes por tag (no por digest) | Aceptado: un redeploy puede traer una revisión menor nueva del tag |
 | `SEED_FORCE` presente en el entorno del backend (por defecto `false`) | Aceptado; solo se usa en el `exec` manual |
 | Backups programados y restauración probada | **Pendiente (bloqueante)** |
 | Configuración verificada en Coolify | **Pendiente (bloqueante)** |
@@ -459,3 +466,7 @@ volumen vacío y el entrypoint oficial inicializándolo con las variables del en
   rol sin recrear el volumen. El entrypoint oficial de postgres **sourcea** los `.sh` de
   `/docker-entrypoint-initdb.d` (no los ejecuta): el script usa `set -e` sin `set -u` y conexiones
   explícitas por el socket Unix local (`trust` durante la inicialización) con `--no-password`.
+- 2026-10-21 — Compose limpio: imágenes por tag (sin digests) para que se lea fácil, fuera los
+  `deploy.resources.limits` y el healthcheck de `web` (y los `HEALTHCHECK` de los Dockerfiles,
+  que eran redundantes). El seed de la cuenta demo pasa a ser **no fatal**: si falla, el backend
+  arranca igualmente y solo deja un aviso en los logs.

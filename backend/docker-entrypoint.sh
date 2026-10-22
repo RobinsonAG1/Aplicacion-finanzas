@@ -64,7 +64,9 @@ python -m alembic upgrade head
 
 if [ "${DEMO_SEED_ENABLED:-false}" = "true" ]; then
   echo "Verificando cuenta demo..."
-  python -m scripts.seed --if-missing
+  if ! python -m scripts.seed --if-missing; then
+    echo "Aviso: no se pudo preparar la cuenta demo; el backend arranca igualmente." >&2
+  fi
 fi
 
 echo "Iniciando servidor..."

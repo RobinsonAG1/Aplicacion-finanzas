@@ -1087,10 +1087,11 @@ deshabilita en producción.
 
 - **Backend** (`backend/Dockerfile`): `python:3.12-slim`, instala `requirements.txt`, copia
   `app/`, `migrations/`, `alembic.ini`, `scripts/` y el entrypoint con propietario
-  `appuser`, corre como usuario no-root, expone `4000` y trae un `HEALTHCHECK` contra
-  `/api/health`. El entrypoint aplica migraciones y arranca Uvicorn con proxy headers.
+  `appuser`, corre como usuario no-root y expone `4000`. El `HEALTHCHECK` vive en el compose
+  (contra `/api/health`). El entrypoint aplica migraciones y arranca Uvicorn con proxy headers.
 - **Frontend** (`frontend/Dockerfile`): build con Vite (`ARG VITE_API_URL=/api`) y runtime
-  `nginx-unprivileged:1.27-alpine` sirviendo `dist`, con `HEALTHCHECK` con `wget`.
+  `nginx-unprivileged:1.27-alpine` sirviendo `dist`. Sin `HEALTHCHECK`: `web` no lo necesita
+  para arrancar y así se evita depender de `wget` en la imagen.
 
 ### 14.2 nginx (`frontend/nginx.conf`)
 

@@ -1,7 +1,6 @@
 services:
   postgres:
-    # Digest fijado (multi-arch) para builds reproducibles. Actualizar de forma consciente.
-    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    image: postgres:16-alpine
     restart: unless-stopped
     init: true
     stop_grace_period: 60s
@@ -26,11 +25,6 @@ services:
       start_period: 20s
     networks:
       - default
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
     logging:
       driver: json-file
       options:
@@ -81,11 +75,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
     logging:
       driver: json-file
       options:
@@ -107,17 +96,6 @@ services:
     networks:
       - default
       - coolify
-    healthcheck:
-      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 128M
     logging:
       driver: json-file
       options:
