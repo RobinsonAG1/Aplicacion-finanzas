@@ -50,8 +50,8 @@ asyncio.run(check())
   if [ "$i" -ge 30 ]; then
     echo "Timeout esperando PostgreSQL. Abortando." >&2
     echo "Si el error indica 'role ... does not exist' o 'password authentication failed':" >&2
-    echo "  el rol de aplicacion lo crea el entrypoint de postgres (postgres/init/01-app-role.sh)." >&2
-    echo "  Revisa los logs del contenedor postgres y que APP_DB_PASSWORD coincida con la del compose." >&2
+    echo "  el rol de aplicacion lo crea postgres/init/01-app-role.sh al inicializar el volumen." >&2
+    echo "  Revisa los logs del contenedor postgres y ejecuta el script a mano si hace falta." >&2
     exit 1
   fi
   sleep 2

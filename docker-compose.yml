@@ -5,13 +5,6 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 60s
-    # El entrypoint oficial se lanza en segundo plano y, cuando el servidor real
-    # ya acepta conexiones, sincroniza los roles con el entorno por el socket
-    # Unix local (autenticacion trust). Asi el rol de aplicacion queda correcto
-    # en cada despliegue aunque la contrasena guardada en el volumen no
-    # coincida con la del entorno.
-    entrypoint: ['/bin/sh', '/init/entrypoint.sh']
-    command: ['postgres']
     environment:
       # Superusuario: solo inicializa la BD y ejecuta el healthcheck.
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
@@ -22,12 +15,11 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init:/init:ro
+      # El entrypoint oficial ejecuta estos scripts solo al inicializar un volumen
+      # nuevo: crean el rol de aplicacion con las variables de entorno.
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      # El marcador lo escribe el entrypoint cuando los roles ya estan
-      # sincronizados: el contenedor no esta sano hasta que el rol de
-      # aplicacion existe.
-      test: ['CMD-SHELL', 'test -f /tmp/roles-synced && pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s
       timeout: 5s
       retries: 10

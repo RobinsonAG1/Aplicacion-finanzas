@@ -174,9 +174,11 @@ Datos demo opcionales (destructivo):
 docker compose exec -T -e SEED_FORCE=true backend python -m scripts.seed
 ```
 
-> El rol `APP_DB_USER` se crea solo al inicializar un volumen nuevo. Si cambias
-> `APP_DB_PASSWORD` despues del primer despliegue, actualiza el rol en PostgreSQL o recrea
-> el volumen de forma consciente.
+> El rol `APP_DB_USER` se crea solo al inicializar un volumen nuevo (script
+> `postgres/init/01-app-role.sh`, ejecutado por el entrypoint oficial de postgres). Si cambias
+> `APP_DB_PASSWORD` despues del primer despliegue, vuelve a ejecutar ese script dentro del
+> contenedor (`docker compose exec -T postgres sh /docker-entrypoint-initdb.d/01-app-role.sh`) o
+> recrea el volumen de forma consciente.
 
 ## Roadmap
 
