@@ -43,5 +43,5 @@ exec python -m uvicorn app.main:app \
   --host 0.0.0.0 \
   --port "${PORT:-4000}" \
   --proxy-headers \
-  --forwarded-allow-ips="*" \
+  --forwarded-allow-ips="${FORWARDED_ALLOW_IPS:-*}" \
   --no-access-log

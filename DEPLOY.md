@@ -80,6 +80,7 @@ Marcadas con `${VAR:?}` en el compose: el despliegue falla si faltan.
 
 | Variable | Obligatoria | Propósito |
 |---|---|---|
+| `POSTGRES_ADMIN_USER` | No (def. `postgres`) | Superusuario del contenedor |
 | `POSTGRES_ADMIN_PASSWORD` | Sí | Superusuario del contenedor (init y healthcheck) |
 | `APP_DB_USER` | No (def. `finanzas`) | Rol de aplicación usado por el backend |
 | `APP_DB_PASSWORD` | Sí | Password del rol de aplicación (usar hexadecimal, va dentro de `DATABASE_URL`) |

@@ -1,11 +1,18 @@
+import os
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LogLevel = Literal["fatal", "error", "warn", "info", "debug", "trace", "silent"]
+
+# (variable en segundos, alias alternativo, factor de conversion a segundos)
+_TTL_ALIASES = (
+    ("JWT_ACCESS_TTL", "ACCESS_TOKEN_MINUTES", 60),
+    ("JWT_REFRESH_TTL", "REFRESH_TOKEN_DAYS", 86400),
+)
 
 
 def to_async_database_url(url: str) -> str:
@@ -29,20 +36,26 @@ class Settings(BaseSettings):
     )
 
     app_env: Literal["development", "test", "production"] = Field(
-        default="development",
-        validation_alias=AliasChoices("APP_ENV", "NODE_ENV"),
+        default="production",
+        validation_alias=AliasChoices("APP_ENV", "NODE_ENV", "ENVIRONMENT"),
     )
-    port: int = Field(default=4000, validation_alias=AliasChoices("PORT"))
+    port: int = Field(default=8000, validation_alias=AliasChoices("PORT"))
     database_url: str = Field(validation_alias=AliasChoices("DATABASE_URL"))
     cors_origin: str = Field(
-        default="http://localhost:5173",
-        validation_alias=AliasChoices("CORS_ORIGIN"),
+        default="*",
+        validation_alias=AliasChoices("CORS_ORIGIN", "CORS_ORIGINS"),
     )
     log_level: LogLevel = Field(default="info", validation_alias=AliasChoices("LOG_LEVEL"))
-    jwt_access_secret: str = Field(validation_alias=AliasChoices("JWT_ACCESS_SECRET"))
-    jwt_refresh_secret: str = Field(validation_alias=AliasChoices("JWT_REFRESH_SECRET"))
-    jwt_access_ttl: int = Field(default=900, validation_alias=AliasChoices("JWT_ACCESS_TTL"))
-    jwt_refresh_ttl: int = Field(default=604800, validation_alias=AliasChoices("JWT_REFRESH_TTL"))
+    jwt_access_secret: str = Field(validation_alias=AliasChoices("JWT_ACCESS_SECRET", "SECRET_KEY"))
+    jwt_refresh_secret: str = Field(
+        validation_alias=AliasChoices("JWT_REFRESH_SECRET", "SECRET_KEY")
+    )
+    jwt_access_ttl: int = Field(
+        default=900, validation_alias=AliasChoices("JWT_ACCESS_TTL", "ACCESS_TOKEN_MINUTES")
+    )
+    jwt_refresh_ttl: int = Field(
+        default=604800, validation_alias=AliasChoices("JWT_REFRESH_TTL", "REFRESH_TOKEN_DAYS")
+    )
 
     @field_validator("jwt_access_secret", "jwt_refresh_secret")
     @classmethod
@@ -50,6 +63,53 @@ class Settings(BaseSettings):
         if len(value) < 32:
             raise ValueError("debe tener al menos 32 caracteres")
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_ttl_aliases(cls, data: Any) -> Any:
+        """Los alias en minutos/dias se convierten a segundos; JWT_*_TTL ya viene en segundos."""
+        if not isinstance(data, dict):
+            return data
+        for seconds_env, alias_env, factor in _TTL_ALIASES:
+            if seconds_env in os.environ or alias_env not in os.environ:
+                continue
+            raw = os.environ.get(alias_env)
+            if raw is None:
+                continue
+            try:
+                data[seconds_env] = int(raw) * factor
+            except ValueError:
+                continue
+        return data
+
+    @field_validator("jwt_access_ttl", mode="before")
+    @classmethod
+    def _parse_access_ttl(cls, value: Any) -> int:
+        if isinstance(value, int):
+            return value
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 900
+
+    @field_validator("jwt_refresh_ttl", mode="before")
+    @classmethod
+    def _parse_refresh_ttl(cls, value: Any) -> int:
+        if isinstance(value, int):
+            return value
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 604800
+
+    @field_validator("cors_origin", mode="before")
+    @classmethod
+    def _parse_cors(cls, value: Any) -> str:
+        if not value or value == "[]":
+            return "*"
+        if isinstance(value, list):
+            return value[0] if value else "*"
+        return str(value)
 
     @property
     def database_url_async(self) -> str:

@@ -123,6 +123,9 @@ jobs:
       - name: Validar compose
         run: docker compose config --quiet
 
+      - name: Crear red externa 'coolify'
+        run: docker network create coolify || true
+
       - name: Construir imágenes
         run: docker compose build
 
