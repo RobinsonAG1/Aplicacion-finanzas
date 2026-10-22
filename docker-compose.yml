@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: ./postgres
     restart: unless-stopped
     init: true
     stop_grace_period: 60s
@@ -13,10 +14,8 @@ services:
       APP_DB_USER: ${APP_DB_USER:-finanzas}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
+      # Solo los datos. El script de roles va dentro de la imagen (postgres/Dockerfile).
       - postgres_data:/var/lib/postgresql/data
-      # El entrypoint oficial ejecuta estos scripts solo al inicializar un volumen
-      # nuevo: crean el rol de aplicacion con las variables de entorno.
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 10s

@@ -38,15 +38,15 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 |---|---|---|---|
 | `web` | `nginxinc/nginx-unprivileged:1.27-alpine` | 8080 (único expuesto a Coolify) | ninguna |
 | `backend` | `python:3.12-slim` | 4000 | ninguna |
-| `postgres` | `postgres:16-alpine` | 5432 (solo red interna) | volumen `postgres_data` |
+| `postgres` | imagen propia sobre `postgres:16-alpine` (`postgres/Dockerfile`) | 5432 (solo red interna) | volumen `postgres_data` |
 
 - No se publica ningún puerto en el host (`ports:` no existe en el compose).
 - `backend` y `postgres` solo son alcanzables por nombre de servicio dentro de la red del compose.
 - El backend aplica `alembic upgrade head` en cada arranque (`backend/docker-entrypoint.sh`).
-- El rol de aplicación lo crea `postgres/init/01-app-role.sh`, que el entrypoint oficial de
-  postgres ejecuta desde `/docker-entrypoint-initdb.d` **al inicializar el volumen** (con las
-  variables `APP_DB_USER`/`APP_DB_PASSWORD` del entorno). El backend se conecta con ese rol, que
-  no tiene privilegios de superusuario.
+- El rol de aplicación lo crea `postgres/init/01-app-role.sh`, que va **dentro de la imagen** de
+  postgres (`postgres/Dockerfile` lo copia a `/docker-entrypoint-initdb.d`) y el entrypoint oficial
+  ejecuta **al inicializar el volumen**, con las variables `APP_DB_USER`/`APP_DB_PASSWORD` del
+  entorno. El backend se conecta con ese rol, que no tiene privilegios de superusuario.
 - El script es idempotente y se puede volver a ejecutar a mano dentro del contenedor para
   resincronizar el rol (ver 13.2). Si se cambia `APP_DB_PASSWORD` después del primer despliegue,
   hay que ejecutarlo de nuevo o recrear el volumen (ver 11).
@@ -65,6 +65,7 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 | `frontend/Dockerfile` | Multi-stage: build Vite + runtime nginx unprivileged |
 | `frontend/nginx.conf` | SPA fallback, proxy `/api`, cabeceras reenviadas |
 | `frontend/security-headers.conf` | CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
+| `postgres/Dockerfile` | Imagen propia de PostgreSQL con el script de inicialización dentro (sin bind mounts) |
 | `postgres/init/01-app-role.sh` | Crea el rol de aplicación (mínimo privilegio) al inicializar el volumen |
 | `.github/workflows/ci.yml` | Lint, tipos, tests, build, smoke del compose y escaneo de seguridad |
 
@@ -292,11 +293,11 @@ limit). Si aparece la IP del proxy, revisar `FORWARDED_ALLOW_IPS` y el `X-Forwar
 
 ### Actualizar una imagen base
 
-Las imágenes usan tags normales (`postgres:16-alpine`, `python:3.12-slim`,
-`node:22-slim`, `nginxinc/nginx-unprivileged:1.27-alpine`), no digests: un redespliegue puede
-traer una revisión menor nueva del tag. Para fijar una versión concreta, cambia el tag (por
-ejemplo `postgres:16.4-alpine`) en `docker-compose.yml` o en el `Dockerfile` correspondiente,
-redespliega y repite las pruebas de humo.
+Las imágenes usan tags normales: `postgres:16-alpine` en `postgres/Dockerfile`, `python:3.12-slim`
+en `backend/Dockerfile`, `node:22-slim` y `nginxinc/nginx-unprivileged:1.27-alpine` en
+`frontend/Dockerfile`. No hay digests fijados: un redespliegue puede traer una revisión menor
+nueva del tag. Para fijar una versión concreta, cambia el tag (por ejemplo
+`postgres:16.4-alpine`), redespliega y repite las pruebas de humo.
 
 ### HEALTHCHECKs
 
@@ -470,3 +471,8 @@ volumen vacío y el entrypoint oficial inicializándolo con las variables del en
   `deploy.resources.limits` y el healthcheck de `web` (y los `HEALTHCHECK` de los Dockerfiles,
   que eran redundantes). El seed de la cuenta demo pasa a ser **no fatal**: si falla, el backend
   arranca igualmente y solo deja un aviso en los logs.
+- 2026-10-21 — El script de roles pasa **dentro de la imagen** de postgres (`postgres/Dockerfile`
+  lo copia a `/docker-entrypoint-initdb.d`). En Coolify el bind mount `./postgres/init` llegaba
+  vacío (directorio sin montar), así que el script no existía en el contenedor y el rol nunca se
+  creaba. Si el contexto no trae `init/`, el build falla de forma visible en vez de arrancar sin
+  el script.
