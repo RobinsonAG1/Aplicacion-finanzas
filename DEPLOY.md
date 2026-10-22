@@ -39,10 +39,15 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 | `web` | `nginxinc/nginx-unprivileged:1.27-alpine` (digest fijado) | 8080 (único expuesto a Coolify) | ninguna |
 | `backend` | `python:3.12-slim` (digest fijado) | 4000 | ninguna |
 | `postgres` | `postgres:16-alpine` (digest fijado) | 5432 (solo red interna) | volumen `postgres_data` |
+| `postgres-init` | `postgres:16-alpine` (digest fijado) | — (tarea de un solo uso) | ninguna |
 
 - No se publica ningún puerto en el host (`ports:` no existe en el compose).
 - `backend` y `postgres` solo son alcanzables por nombre de servicio dentro de la red del compose.
 - El backend aplica `alembic upgrade head` en cada arranque (`backend/docker-entrypoint.sh`).
+- `postgres-init` crea o actualiza el rol de aplicación **en cada despliegue** y termina con
+  código 0; `backend` no arranca hasta que termina (`service_completed_successfully`).
+  Esto evita el fallo clásico de un volumen ya inicializado sin rol, o de un
+  `APP_DB_PASSWORD` cambiado después del primer despliegue.
 - Una sola réplica del backend: el rate limit es en memoria y las migraciones corren en el
   entrypoint.
 
@@ -58,7 +63,7 @@ Coolify / Traefik  ──►  web (nginx, :8080)  ──►  /api/  ──►  b
 | `frontend/Dockerfile` | Multi-stage: build Vite + runtime nginx unprivileged |
 | `frontend/nginx.conf` | SPA fallback, proxy `/api`, cabeceras reenviadas |
 | `frontend/security-headers.conf` | CSP, HSTS, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` |
-| `postgres/init/01-app-role.sh` | Crea el rol de aplicación (mínimo privilegio) |
+| `postgres/init/01-app-role.sh` | Crea/actualiza el rol de aplicación (mínimo privilegio) |
 | `.github/workflows/ci.yml` | Lint, tipos, tests, build, smoke del compose y escaneo de seguridad |
 
 ---
@@ -183,9 +188,9 @@ docker compose exec -T postgres sh -lc 'dropdb -U "$POSTGRES_USER" finanzas_rest
 **Nunca** usar `docker compose down -v` como parte de una recuperación: elimina el volumen y
 los datos.
 
-El script `postgres/init/01-app-role.sh` solo se ejecuta con el volumen **vacío**. Si se cambia
-`APP_DB_PASSWORD` después del primer despliegue, hay que actualizar el rol en PostgreSQL
-(`ALTER ROLE ... PASSWORD ...`); recrear el volumen borra los datos.
+El script `postgres/init/01-app-role.sh` lo ejecuta el servicio `postgres-init` en **cada
+despliegue**, así que el rol queda sincronizado con `APP_DB_PASSWORD` sin recrear el volumen.
+Si el rol sigue sin existir, créalo a mano con el procedimiento de la sección 13.
 
 ---
 
@@ -288,7 +293,8 @@ Los digests están fijados para que un redespliegue no cambie de versión sin de
 
 ### Cambiar `APP_DB_PASSWORD`
 
-El rol se crea solo con el volumen vacío. Para cambiarlo, abrir `psql` como superusuario:
+Actualiza la variable en Coolify y redespliega: el servicio `postgres-init` sincroniza la
+contraseña del rol en cada despliegue. Para aplicarlo sin redesplegar:
 
 ```bash
 docker compose exec postgres psql -U postgres -d finanzas
@@ -297,7 +303,8 @@ docker compose exec postgres psql -U postgres -d finanzas
 \q
 ```
 
-Actualizar también la variable en Coolify y redesplegar. No recrear el volumen.
+La contraseña debe ser segura para una URL (`DATABASE_URL` la incluye sin escapar): usa
+hexadecimal (`python -c "import secrets; print(secrets.token_hex(32))"`).
 
 ---
 
@@ -315,8 +322,66 @@ Actualizar también la variable en Coolify y redesplegar. No recrear el volumen.
 
 ---
 
-## 13. Historial de cambios de este documento
+## 13. Diagnóstico: despliegue atascado en "Waiting"
+
+Si el log de despliegue se queda en `Container backend-... Waiting`, el contenedor del API no
+llega a estado *healthy* y Coolify espera indefinidamente. Causa habitual: **el backend no
+puede conectarse a PostgreSQL con el rol de aplicación**.
+
+### 13.1 Ver el error real
+
+```bash
+docker compose ps -a                 # el backend sale/reinicia en bucle
+docker compose logs --tail=100 backend
+docker compose logs postgres-init
+```
+
+El entrypoint imprime el error de conexión real (no lo oculta). Los mensajes típicos:
+
+| Error | Causa | Solución |
+|---|---|---|
+| `role "finanzas" does not exist` | El rol no se creó (volumen ya inicializado sin el script) | Crear el rol (13.2) o redeplegar con `postgres-init` |
+| `password authentication failed for user "finanzas"` | `APP_DB_PASSWORD` no coincide con el del rol | `ALTER ROLE` (13.2) |
+| `invalid dsn` / `could not translate host name` | La contraseña tiene caracteres que rompen la URL (`@`, `:`, `#`, `/`) | Usar una contraseña hexadecimal |
+
+### 13.2 Crear o sincronizar el rol a mano
+
+```bash
+docker compose exec -T postgres psql -U postgres -d finanzas -v ON_ERROR_STOP=1 <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'finanzas') THEN
+    CREATE ROLE finanzas LOGIN PASSWORD 'PEGA_AQUI_APP_DB_PASSWORD' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+  END IF;
+END
+$$;
+ALTER ROLE finanzas WITH LOGIN PASSWORD 'PEGA_AQUI_APP_DB_PASSWORD' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+ALTER DATABASE finanzas OWNER TO finanzas;
+ALTER SCHEMA public OWNER TO finanzas;
+GRANT ALL ON SCHEMA public TO finanzas;
+SQL
+```
+
+Después, reinicia el backend: `docker compose restart backend`.
+
+### 13.3 Empezar de cero (borra los datos)
+
+Solo si no hay datos que conservar. **Nunca** usar `down -v` como parte de una recuperación.
+
+```bash
+docker compose down -v
+docker compose up -d
+```
+
+---
+
+## 14. Historial de cambios de este documento
 
 - 2026-10-21 — Creación tras auditoría de preparación. Se fijaron digests de imágenes, se
   añadieron límites de recursos y rotación de logs, se preservó `X-Forwarded-Proto` original
   en nginx y se marcó como ejecutable el script de inicialización de PostgreSQL.
+- 2026-10-22 — El compose vuelve a desplegar `postgres`, `backend` (4000) y `web` (8080) con
+  `nginxinc/nginx-unprivileged`. Se añade el servicio `postgres-init` (tarea de un solo uso) que
+  crea/actualiza el rol de aplicación en cada despliegue, se hace visible el error real de
+  conexión en `docker-entrypoint.sh` y se documenta el diagnóstico de despliegues atascados
+  (sección 13).
