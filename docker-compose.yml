@@ -15,6 +15,9 @@ services:
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Socket local compartido: permite a postgres-init entrar por el socket
+      # (autenticacion trust) sin depender de la contrasena del volumen.
+      - pg_socket:/var/run/postgresql
       - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
@@ -36,24 +39,30 @@ services:
         max-file: '3'
 
   postgres-init:
-    # Tarea de un solo uso: crea/actualiza el rol de aplicacion en CADA despliegue.
-    # El directorio initdb.d solo se ejecuta con el volumen vacio, asi que un volumen
-    # ya inicializado (o un APP_DB_PASSWORD cambiado) se quedaria sin rol valido.
+    # Tarea de un solo uso: crea/actualiza los roles en CADA despliegue.
+    # El directorio initdb.d solo se ejecuta con el volumen vacio, asi que un
+    # volumen ya inicializado (o un APP_DB_PASSWORD cambiado) se quedaria sin rol
+    # valido. Entra por el socket local del contenedor postgres (trust), por lo
+    # que funciona aunque la contrasena del volumen no coincida con la del entorno.
     image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      PGHOST: postgres
+      PGSOCKET_DIR: /var/run/postgresql
       PGPORT: '5432'
-      PGUSER: ${POSTGRES_ADMIN_USER:-postgres}
+      # Fallback por TCP si el socket local no estuviera disponible.
+      PGHOST: postgres
+      # PGPASSWORD solo se usa si el socket exigiera contrasena (configuracion
+      # alternativa de initdb); con trust se ignora.
       PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}
-      PGDATABASE: ${POSTGRES_DB:-finanzas}
       POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-finanzas}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD}
       APP_DB_USER: ${APP_DB_USER:-finanzas}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD}
     volumes:
+      - pg_socket:/var/run/postgresql
       - ./postgres/init:/init:ro
     # Se invoca con sh explicito: no depende del bit de ejecucion en git.
     entrypoint: ['/bin/sh', '-c', 'sh /init/01-app-role.sh']
@@ -152,6 +161,7 @@ services:
 
 volumes:
   postgres_data:
+  pg_socket:
 
 networks:
   coolify:
