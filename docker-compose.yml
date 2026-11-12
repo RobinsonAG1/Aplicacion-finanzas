@@ -36,11 +36,14 @@ services:
       - postgres
 
   # Nodo EVM local (Anvil) que sirve como RPC para la seccion blockchain.
+  # Imagen propia (anvil/Dockerfile) con --host 0.0.0.0 bakado, porque Coolify
+  # no aplicaba el `command:` del compose y anvil por defecto escucha en 127.0.0.1.
   # El estado (cuentas y contrato desplegado) persiste en el volumen anvil_data.
   anvil:
-    image: ghcr.io/foundry-rs/foundry:v1.9.0
+    build:
+      context: .
+      dockerfile: anvil/Dockerfile
     restart: unless-stopped
-    command: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--block-time", "1", "--state", "/data/anvil-state.json"]
     volumes:
       - anvil_data:/data
     expose:
