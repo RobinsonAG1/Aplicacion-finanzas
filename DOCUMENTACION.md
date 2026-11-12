@@ -742,6 +742,35 @@ zona local del servidor y las etiquetas mensuales se desplazan un mes.
 usuario cuyo comercio contenga el término, cuenta categorías y devuelve las 3 más
 frecuentes con `confidence = count / total` (redondeado a 2 decimales).
 
+### 8.9 Blockchain (pagos on-chain)
+
+Flujo completo: **billetera → nodo RPC → mempool → bloque → EVM → recibo → indexador → PostgreSQL**.
+
+| Pieza | Implementación |
+|---|---|
+| Contrato | `backend/contracts/PaymentProcessor.sol` + artifact JSON (ABI/bytecode). `pay(bytes32 refId)` emite `PaymentReceived(payer, amountWei, refId)` y envía el ETH a la tesorería |
+| Despliegue | `scripts/deploy_contract.py` contra Anvil (`http://127.0.0.1:8545`); imprime las variables de entorno a copiar en `backend/.env` |
+| Billetera | 1 por usuario (`Wallet`). Clave privada generada con `eth-account` y cifrada con Fernet (`WALLET_ENCRYPTION_KEY`); nunca sale por API |
+| Pago | `onchain_payment_service` crea la fila `PENDING` (mempool local), firma la tx con la clave, difunde al RPC y pasa a `SUBMITTED` con `tx_hash` y `nonce` |
+| Recibo | El indexador consulta `eth_get_transaction_receipt` → `CONFIRMED` / `FAILED` con `blockNumber`, `gasUsed`, `confirmedAt` |
+| Indexador | `chain_indexer_service` (tarea asyncio en el lifespan): lee `eth_getLogs` del evento `PaymentReceived` desde `chain_sync_state.last_synced_block`, los inserta en `chain_events` (dedupe por `tx_hash`+`log_index`) y los atribuye por `refId` (o por dirección del pagador) |
+| API | `GET/POST /api/blockchain/{status,wallet,payments,events}` (router `blockchain.py`) |
+| Frontend | `/blockchain` (`BlockchainPage` + `src/api/blockchain.ts`): estado de red, billetera, formulario de pago, tabla de pagos y eventos; sondea cada 8s solo mientras haya pagos en curso |
+
+Notas de operación:
+
+- La sección se **desactiva** si falta `RPC_URL`, `PAYMENT_CONTRACT_ADDRESS`,
+  `TREASURY_ADDRESS` o `WALLET_ENCRYPTION_KEY` (`settings.blockchain_enabled`);
+  el backend arranca igual y la API responde `503 BLOCKCHAIN_DISABLED`.
+- En `docker-compose.yml` el nodo Anvil vive bajo el perfil `blockchain`
+  (`docker compose --profile blockchain up`) y no publica puertos en el host.
+- Si Anvil se reinicia pierde el estado del contrato: hay que redesplegar y actualizar
+  `PAYMENT_CONTRACT_ADDRESS`.
+- Los pagos referencian opcionalmente una transacción (`transactionId`, FK con `SET NULL`);
+  el monto máximo por pago es 100 ETH y se rechaza si la billetera no tiene saldo.
+- Eventos no atribuibles a ningún usuario (envíos directos al contrato) se saltan con un
+  warning `chain_event_unattributed` y el bloque queda sincronizado igualmente.
+
 ---
 
 ## 9. Frontend
@@ -933,6 +962,12 @@ porque el upstream `backend` solo resuelve dentro de compose. **Observación men
 | `JWT_ACCESS_TTL` | No | `900` | TTL access en segundos |
 | `JWT_REFRESH_TTL` | No | `604800` | TTL refresh en segundos (7 días) |
 | `SEED_FORCE` | No | — | Solo seed: `true` fuerza el seed en producción |
+| `RPC_URL` | No | — | URL del nodo EVM; si falta alguna variable de blockchain la sección queda desactivada |
+| `CHAIN_ID` | No | `31337` | Chain ID de la red (31337 = Anvil) |
+| `PAYMENT_CONTRACT_ADDRESS` | No | — | Dirección del contrato `PaymentProcessor` |
+| `TREASURY_ADDRESS` | No | — | Dirección que recibe los fondos de los pagos |
+| `WALLET_ENCRYPTION_KEY` | No | — | Clave Fernet para cifrar claves privadas (generar con `scripts/generate_wallet_key.py`) |
+| `INDEXER_INTERVAL` | No | `5` | Segundos entre ciclos del indexador |
 
 `app/core/config.py` valida con pydantic-settings y **aborta el arranque** si algo falta o
 es inválido.

@@ -60,6 +60,7 @@
     -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-display: 'Segoe UI Variable Display', 'Segoe UI', ui-sans-serif,
     system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 }
 
 :root[data-theme='dark'] {
@@ -1494,6 +1495,82 @@ select option {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* Blockchain ------------------------------------------------------------- */
+.blockchain-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.blockchain-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.blockchain-stack .panel-standalone {
+  margin-top: 0;
+}
+
+.blockchain-stack .panel h2 {
+  margin: 0 0 0.8rem;
+  font-size: 1.02rem;
+}
+
+.chain-meta {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.chain-meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.86rem;
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 0.45rem;
+}
+
+.chain-meta-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.chain-meta-row dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.chain-meta-row dd {
+  margin: 0;
+  text-align: right;
+  word-break: break-all;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  letter-spacing: -0.01em;
+}
+
+.badge-ok {
+  background: var(--income-soft);
+  border-color: var(--income);
+  color: var(--income);
+}
+
+.badge-warn {
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+@media (max-width: 1100px) {
+  .blockchain-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Adaptabilidad ---------------------------------------------------------- */

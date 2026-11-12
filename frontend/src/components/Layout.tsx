@@ -14,6 +14,7 @@ type NavIconName =
   | 'analytics'
   | 'accounts'
   | 'categories'
+  | 'blockchain'
 
 const NAV_ICONS: Record<NavIconName, ReactNode> = {
   home: (
@@ -68,6 +69,13 @@ const NAV_ICONS: Record<NavIconName, ReactNode> = {
       <circle cx="8" cy="8" r="1.2" />
     </>
   ),
+  blockchain: (
+    <>
+      <path d="M9.5 14.5 14.5 9.5" />
+      <path d="M7 11 4.8 13.2a3.6 3.6 0 0 0 5.1 5.1L12 16.2" />
+      <path d="m17 13 2.2-2.2a3.6 3.6 0 0 0-5.1-5.1L12 7.8" />
+    </>
+  ),
 }
 
 type NavItem = {
@@ -99,6 +107,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { to: '/accounts', label: 'Cuentas', icon: 'accounts' },
       { to: '/categories', label: 'Categorías', icon: 'categories' },
+      { to: '/blockchain', label: 'Blockchain', icon: 'blockchain' },
     ],
   },
 ]

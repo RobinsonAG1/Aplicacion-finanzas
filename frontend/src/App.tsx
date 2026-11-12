@@ -25,6 +25,9 @@ const DashboardPage = lazy(() =>
   import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
 )
 const PotsPage = lazy(() => import('./pages/PotsPage').then((module) => ({ default: module.PotsPage })))
+const BlockchainPage = lazy(() =>
+  import('./pages/BlockchainPage').then((module) => ({ default: module.BlockchainPage })),
+)
 const TransactionsPage = lazy(() =>
   import('./pages/TransactionsPage').then((module) => ({ default: module.TransactionsPage })),
 )
@@ -45,6 +48,7 @@ export default function App() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="accounts" element={<AccountsPage />} />
           <Route path="categories" element={<CategoriesPage />} />
+          <Route path="blockchain" element={<BlockchainPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
