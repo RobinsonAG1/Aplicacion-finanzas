@@ -73,6 +73,20 @@ class Settings(BaseSettings):
     jwt_refresh_ttl: int = Field(
         default=604800, validation_alias=AliasChoices("JWT_REFRESH_TTL", "REFRESH_TOKEN_DAYS")
     )
+    # Blockchain: si RPC_URL + PAYMENT_CONTRACT_ADDRESS + WALLET_ENCRYPTION_KEY
+    # no estan definidos, la seccion queda desactivada (no aborta el startup).
+    rpc_url: str = Field(default="", repr=False, validation_alias=AliasChoices("RPC_URL"))
+    chain_id: int = Field(default=31337, validation_alias=AliasChoices("CHAIN_ID"))
+    payment_contract_address: str = Field(
+        default="", validation_alias=AliasChoices("PAYMENT_CONTRACT_ADDRESS")
+    )
+    treasury_address: str = Field(default="", validation_alias=AliasChoices("TREASURY_ADDRESS"))
+    wallet_encryption_key: str = Field(
+        default="", repr=False, validation_alias=AliasChoices("WALLET_ENCRYPTION_KEY")
+    )
+    indexer_interval: int = Field(
+        default=5, validation_alias=AliasChoices("INDEXER_INTERVAL_SECONDS", "INDEXER_INTERVAL")
+    )
 
     @field_validator("jwt_access_secret", "jwt_refresh_secret")
     @classmethod
@@ -156,6 +170,15 @@ class Settings(BaseSettings):
     @property
     def is_test(self) -> bool:
         return self.app_env == "test"
+
+    @property
+    def blockchain_enabled(self) -> bool:
+        return bool(
+            self.rpc_url
+            and self.payment_contract_address
+            and self.wallet_encryption_key
+            and self.treasury_address
+        )
 
 
 @lru_cache

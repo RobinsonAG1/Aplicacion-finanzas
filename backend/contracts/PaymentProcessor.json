@@ -1,0 +1,82 @@
+{
+  "contractName": "PaymentProcessor",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_treasury",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "ZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ZeroAmount",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "payer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "amountWei",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "refId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "PaymentReceived",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "refId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "pay",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "treasury",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
+  ],
+  "bytecode": "60a060405234801561000f575f80fd5b5060405161036c38038061036c83398101604081905261002e91610066565b6001600160a01b0381166100555760405163d92e233d60e01b815260040160405180910390fd5b6001600160a01b0316608052610093565b5f60208284031215610076575f80fd5b81516001600160a01b038116811461008c575f80fd5b9392505050565b6080516102b46100b85f395f818160330152818161010601526101ac01526102b45ff3fe60806040526004361061002b575f3560e01c806361d027b3146100f55780638609cad114610144575f80fd5b366100f1575f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316346040515f6040518083038185875af1925050503d805f8114610099576040519150601f19603f3d011682016040523d82523d5f602084013e61009e565b606091505b50509050806100ef5760405162461bcd60e51b81526020600482015260186024820152771d1c99585cdd5c9e481d1c985b9cd9995c8819985a5b195960421b60448201526064015b60405180910390fd5b005b5f80fd5b348015610100575f80fd5b506101287f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b03909116815260200160405180910390f35b6100ef610152366004610267565b345f0361017257604051631f2a200560e01b815260040160405180910390fd5b604051348152819033907f9425051d4fb495e36ce8fb9813530dc7f9d6ceea03cf92a15d69ecd21d6377349060200160405180910390a35f7f00000000000000000000000000000000000000000000000000000000000000006001600160a01b0316346040515f6040518083038185875af1925050503d805f8114610212576040519150601f19603f3d011682016040523d82523d5f602084013e610217565b606091505b50509050806102635760405162461bcd60e51b81526020600482015260186024820152771d1c99585cdd5c9e481d1c985b9cd9995c8819985a5b195960421b60448201526064016100e6565b5050565b5f60208284031215610277575f80fd5b503591905056fea264697066735822122084916c247ff092a3d0cc5cc8d32057526aa7ddca3fa957fc07884a0faccb9e5464736f6c63430008180033"
+}

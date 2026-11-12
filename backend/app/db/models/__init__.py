@@ -6,14 +6,17 @@ from app.db.models.enums import (
     AccountType,
     BudgetPeriod,
     CategoryType,
+    OnChainPaymentStatus,
     PotTransactionType,
     ReminderChannel,
     ReminderStatus,
     TransactionType,
 )
+from app.db.models.onchain import ChainEvent, ChainSyncState, OnChainPayment
 from app.db.models.pot import Pot, PotTransaction
 from app.db.models.transaction import Transaction
 from app.db.models.user import RefreshToken, User
+from app.db.models.wallet import Wallet
 
 __all__ = [
     "Account",
@@ -23,6 +26,10 @@ __all__ = [
     "BudgetPeriod",
     "Category",
     "CategoryType",
+    "ChainEvent",
+    "ChainSyncState",
+    "OnChainPayment",
+    "OnChainPaymentStatus",
     "Pot",
     "PotTransaction",
     "PotTransactionType",
@@ -33,4 +40,5 @@ __all__ = [
     "Transaction",
     "TransactionType",
     "User",
+    "Wallet",
 ]

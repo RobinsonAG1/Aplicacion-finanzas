@@ -4,17 +4,21 @@ from logging.config import fileConfig
 from alembic import context
 from app.core.config import settings
 from app.db.base import Base
-from app.db.models import (  # noqa: F401  # noqa: F401  # noqa: F401
+from app.db.models import (  # noqa: F401
     Account,
     BillReminder,
     Budget,
     Category,
+    ChainEvent,
+    ChainSyncState,
+    OnChainPayment,
     Pot,
     PotTransaction,
     RecurringBill,
     RefreshToken,
     Transaction,
     User,
+    Wallet,
 )
 from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import create_async_engine

@@ -12,3 +12,5 @@ slowapi==0.1.10
 structlog==26.1.0
 email-validator==2.3.0
 python-dotenv==1.2.4
+web3==8.0.0
+cryptography==50.0.2

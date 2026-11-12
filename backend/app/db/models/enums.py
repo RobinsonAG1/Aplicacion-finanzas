@@ -41,3 +41,10 @@ class ReminderStatus(StrEnum):
     PENDING = "PENDING"
     SENT = "SENT"
     FAILED = "FAILED"
+
+
+class OnChainPaymentStatus(StrEnum):
+    PENDING = "PENDING"
+    SUBMITTED = "SUBMITTED"
+    CONFIRMED = "CONFIRMED"
+    FAILED = "FAILED"
