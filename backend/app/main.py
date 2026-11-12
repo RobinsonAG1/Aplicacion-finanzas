@@ -37,6 +37,7 @@ from app.routers import (
     pots,
     transactions,
 )
+from app.services import chain_indexer_service
 
 logger = get_logger(__name__)
 
@@ -44,7 +45,9 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("backend_started", environment=settings.app_env)
+    chain_indexer_service.start_indexer()
     yield
+    await chain_indexer_service.stop_indexer()
     await dispose_engine()
     logger.info("backend_stopped")
 

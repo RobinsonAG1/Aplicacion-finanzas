@@ -6,6 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Wallet
 
 
+async def find_by_address(db: AsyncSession, address: str) -> Wallet | None:
+    result = await db.execute(select(Wallet).where(Wallet.address == address))
+    return result.scalar_one_or_none()
+
+
 async def find_by_user(db: AsyncSession, user_id: uuid.UUID) -> Wallet | None:
     result = await db.execute(select(Wallet).where(Wallet.user_id == user_id))
     return result.scalar_one_or_none()

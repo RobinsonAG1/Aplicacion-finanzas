@@ -143,6 +143,56 @@ async def test_payment_rejects_amount_over_limit(client: httpx.AsyncClient) -> N
 
 
 @requires_node
+async def test_indexer_confirms_payment_and_indexes_event(client: httpx.AsyncClient) -> None:
+    from app.db.session import SessionLocal
+    from app.services import chain_indexer_service
+
+    user = await create_test_user(client)
+    wallet = (await client.post("/api/blockchain/wallet", headers=auth_header(user))).json()["data"]
+    await _fund_wallet(wallet["address"], 1)
+
+    response = await client.post(
+        "/api/blockchain/payments",
+        headers=auth_header(user),
+        json={"amount": "0.02"},
+    )
+    assert response.status_code == 201, response.text
+    payment = response.json()["data"]
+    assert payment["status"] == "SUBMITTED"
+
+    # El indexador es un poller: el recibo ya debe existir cuando consulta.
+    Web3(Web3.HTTPProvider(settings.rpc_url)).eth.wait_for_transaction_receipt(
+        payment["txHash"], timeout=30
+    )
+
+    async with SessionLocal() as db:
+        stats = await chain_indexer_service.run_indexer_once(db)
+    assert stats["resolved"] >= 1
+    assert stats["indexed"] >= 1
+
+    listing = await client.get("/api/blockchain/payments", headers=auth_header(user))
+    confirmed = listing.json()["data"][0]
+    assert confirmed["id"] == payment["id"]
+    assert confirmed["status"] == "CONFIRMED"
+    assert confirmed["blockNumber"] is not None
+    assert confirmed["gasUsed"] is not None
+    assert confirmed["confirmedAt"] is not None
+    assert confirmed["reference"] == payment["reference"]
+
+    events = await client.get("/api/blockchain/events", headers=auth_header(user))
+    assert events.status_code == 200
+    data = events.json()["data"]
+    assert len(data) == 1
+    event = data[0]
+    assert event["eventName"] == "PaymentReceived"
+    assert event["reference"] == payment["reference"]
+    assert event["payer"] == wallet["address"]
+    assert event["amountEth"] == "0.02"
+    assert event["blockNumber"] == confirmed["blockNumber"]
+    assert event["txHash"] == payment["txHash"]
+
+
+@requires_node
 async def test_events_start_empty(client: httpx.AsyncClient) -> None:
     user = await create_test_user(client)
 
