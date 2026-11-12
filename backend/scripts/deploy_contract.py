@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+from app.core.config import settings
 from eth_account import Account as EthAccount
 from web3 import Web3
 
@@ -53,6 +54,16 @@ def main() -> None:
     w3 = Web3(Web3.HTTPProvider(args.rpc))
     if not w3.is_connected():
         sys.exit(f"no se pudo conectar a {args.rpc}; levanta Anvil primero")
+
+    # Idempotente: si ya hay un contrato vivo desplegado, no repite el despliegue.
+    if settings.payment_contract_address:
+        deployed = Web3.to_checksum_address(settings.payment_contract_address)
+        if w3.eth.get_code(deployed):
+            contract = w3.eth.contract(address=deployed, abi=artifact["abi"])
+            treasury = contract.functions.treasury().call()
+            print(f"el contrato ya esta desplegado en {deployed} (treasury {treasury})")
+            print("no se repite el despliegue; actualiza PAYMENT_CONTRACT_ADDRESS si cambia")
+            return
 
     account = EthAccount.from_key(args.private_key)
     balance_eth = w3.from_wei(w3.eth.get_balance(account.address), "ether")

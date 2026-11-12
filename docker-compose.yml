@@ -36,11 +36,14 @@ services:
       - postgres
 
   # Nodo EVM local (Anvil): solo con `docker compose --profile blockchain up`.
+  # El estado (cuentas y contrato desplegado) persiste en el volumen anvil_data.
   anvil:
     image: ghcr.io/foundry-rs/foundry:v1.9.0
     profiles: ["blockchain"]
     restart: unless-stopped
-    command: ["anvil", "--host", "0.0.0.0", "--port", "8545"]
+    command: ["anvil", "--host", "0.0.0.0", "--port", "8545", "--block-time", "1", "--state", "/data/anvil-state.json"]
+    volumes:
+      - anvil_data:/data
     expose:
       - '8545'
 
@@ -66,6 +69,7 @@ services:
 
 volumes:
   postgres_data:
+  anvil_data:
 
 networks:
   # Red del proxy de Coolify: el dominio entra por aqui hasta 'web'.

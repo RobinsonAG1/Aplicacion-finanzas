@@ -18,6 +18,7 @@ RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser
 COPY --chown=appuser:appuser alembic.ini ./
 COPY --chown=appuser:appuser migrations ./migrations
 COPY --chown=appuser:appuser app ./app
+COPY --chown=appuser:appuser contracts ./contracts
 COPY --chown=appuser:appuser scripts ./scripts
 COPY --chown=appuser:appuser docker-entrypoint.sh ./
 RUN chmod +x ./docker-entrypoint.sh
