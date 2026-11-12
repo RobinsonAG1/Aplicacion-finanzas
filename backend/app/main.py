@@ -30,6 +30,7 @@ from app.routers import (
     analytics,
     auth,
     bills,
+    blockchain,
     budgets,
     categories,
     health,
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(budgets.router)
     app.include_router(pots.router)
     app.include_router(bills.router)
+    app.include_router(blockchain.router)
     return app
 
 
